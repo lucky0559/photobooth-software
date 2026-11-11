@@ -2,6 +2,7 @@ import type { KioskSettings, KioskState } from '@pb/core';
 import { useEffect, useRef, useState } from 'react';
 import { captureFrame, closeCamera, openCamera } from '../camera/camera';
 import { shotStore } from '../camera/shot-store';
+import { watchFirstFrame, watchMute } from '../camera/watchdog';
 import type { KioskInput } from '../state/useKiosk';
 
 const FLASH_MS = 150;
@@ -36,6 +37,8 @@ export function Capture({
     if (failed) return;
     let cancelled = false;
     let stream: MediaStream | null = null;
+    let stopFrameWatch: (() => void) | undefined;
+    let stopMuteWatch: (() => void) | undefined;
     const fail = (): void => {
       if (!cancelled) dispatch({ type: 'CAMERA_ERROR' });
     };
@@ -46,14 +49,22 @@ export function Capture({
         const track = s.getVideoTracks()[0];
         const video = videoRef.current;
         if (!track || track.readyState === 'ended' || !video) return fail();
+        // A camera that opens but never delivers frames (no-signal capture card, busy webcam) must not
+        // trap the guest: the frame watchdog covers a play() that never resolves, the mute watch covers later stalls.
+        stopFrameWatch = watchFirstFrame(video, fail);
+        stopMuteWatch = watchMute(track, fail);
         track.addEventListener('ended', fail);
         video.srcObject = s;
         await video.play();
-        if (!cancelled) setLive(true);
+        if (cancelled) return;
+        stopFrameWatch();
+        setLive(true);
       })
       .catch(fail);
     return () => {
       cancelled = true;
+      stopFrameWatch?.();
+      stopMuteWatch?.();
       setLive(false);
       if (stream) closeCamera(stream);
     };
@@ -74,7 +85,10 @@ export function Capture({
         setCount(null);
         const video = videoRef.current;
         const track = (video?.srcObject as MediaStream | null)?.getVideoTracks()[0];
-        if (!video || track?.readyState !== 'live') return dispatch({ type: 'CAMERA_ERROR' });
+        if (!video || track?.readyState !== 'live') {
+          if (!cancelled) dispatch({ type: 'CAMERA_ERROR' });
+          return;
+        }
         let blob: Blob;
         try {
           blob = await captureFrame(video);
@@ -82,6 +96,8 @@ export function Capture({
           if (!cancelled) dispatch({ type: 'CAMERA_ERROR' });
           return;
         }
+        // Camera failed or the screen unmounted during encode: drop the frame.
+        if (cancelled) return;
         const shotId = shotStore.put(blob);
         setFlash(true);
         await wait(FLASH_MS);

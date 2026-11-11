@@ -66,6 +66,28 @@ describe('syncSettings', () => {
     expect(config().cachedTemplate).toEqual(TEMPLATE);
   });
 
+  it('still returns fetched settings and template when caching them fails', async () => {
+    const { bridge } = fakeBridge();
+    bridge.setConfig = async () => {
+      throw new Error('disk full');
+    };
+    const r = await syncSettings(fakeApi(), bridge);
+    expect(r).toEqual({ settings: ONLINE, template: TEMPLATE, settingsFetchFailed: false });
+  });
+
+  it('treats an unreadable cache as empty', async () => {
+    const { bridge } = fakeBridge();
+    bridge.getConfig = async () => {
+      throw new Error('ipc down');
+    };
+    expect(await syncSettings(fakeApi(), bridge)).toEqual({ settings: ONLINE, template: TEMPLATE, settingsFetchFailed: false });
+    expect(await syncSettings(fakeApi({ settings: new Error('offline') }), bridge)).toEqual({
+      settings: DEFAULT_SETTINGS,
+      template: null,
+      settingsFetchFailed: true,
+    });
+  });
+
   it('clears the cached template when settings have no active template', async () => {
     const { bridge, config } = fakeBridge({ cachedTemplate: TEMPLATE });
     const r = await syncSettings(fakeApi({ settings: { ...ONLINE, activeTemplateId: null } }), bridge);
