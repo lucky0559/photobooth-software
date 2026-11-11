@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",
-    "build:e2e": "cross-env VITE_FAKE_API=1 electron-vite build",
+    "build:e2e": "cross-env VITE_FAKE_API=1 VITE_WEB_BASE_URL=http://localhost:3000 electron-vite build",
     "e2e": "pnpm run build:e2e && playwright test",
     "test": "vitest run",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json"

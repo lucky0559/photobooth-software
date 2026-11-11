@@ -100,6 +100,41 @@ describe('runOutput', () => {
     await expect(runOutput(d)).rejects.toThrow('disk full');
   });
 
+  it('retry after a queue failure reuses the first print outcome instead of printing again', async () => {
+    const d = deps();
+    d.bridge.print.mockResolvedValue({ ok: false, reason: 'jam' } as never);
+    d.bridge.queueAdd.mockRejectedValueOnce(new Error('disk full'));
+    let printed: { printError: string | null } | undefined;
+    const onPrinted = vi.fn((printError: string | null) => (printed = { printError }));
+
+    await expect(runOutput({ ...d, onPrinted })).rejects.toThrow('disk full');
+    expect(onPrinted).toHaveBeenCalledWith('jam');
+
+    const r = await runOutput({ ...d, onPrinted, priorPrint: printed });
+    expect(d.bridge.print).toHaveBeenCalledTimes(1);
+    expect(r.printError).toBe('jam');
+    expect(added(d).slice(-1)[0]).toMatchObject({ kind: 'upsert_session', row: { printError: 'jam' } });
+  });
+
+  it('retry after a failed follow-up enqueue does not print again', async () => {
+    const d = deps();
+    d.bridge.print.mockResolvedValue({ ok: false, reason: 'jam' } as never);
+    d.bridge.queueAdd.mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error('disk full'));
+    let printed: { printError: string | null } | undefined;
+    const onPrinted = (printError: string | null) => (printed = { printError });
+    await expect(runOutput({ ...d, onPrinted })).rejects.toThrow('disk full');
+    expect((await runOutput({ ...d, onPrinted, priorPrint: printed })).printError).toBe('jam');
+    expect(d.bridge.print).toHaveBeenCalledTimes(1);
+  });
+
+  it('a successful prior print is reused as null', async () => {
+    const d = deps();
+    const r = await runOutput({ ...d, priorPrint: { printError: null } });
+    expect(d.bridge.print).not.toHaveBeenCalled();
+    expect(r.printError).toBeNull();
+    expect(added(d)).toHaveLength(2);
+  });
+
   it('rejects when the photo cannot be saved', async () => {
     const d = deps();
     d.bridge.savePhoto.mockRejectedValue(new Error('EACCES'));

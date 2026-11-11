@@ -12,6 +12,10 @@ export interface OutputDeps {
   session: { sessionId: string; downloadToken: string; templateId: string; amountCentavos: number; createdAt: string };
   now(): number;
   newId(): string;
+  /** Outcome of an earlier run's print for this session: when set, the sheet is not printed again. */
+  priorPrint?: { printError: string | null };
+  /** Called once the print outcome is known, so a retry can pass it back as `priorPrint`. */
+  onPrinted?(printError: string | null): void;
 }
 
 const fresh = { attempts: 0, nextAttemptAt: 0, lastError: null } as const;
@@ -19,7 +23,7 @@ const fresh = { attempts: 0, nextAttemptAt: 0, lastError: null } as const;
 /**
  * compose → savePhoto → in parallel: print and queue (session row + upload). Resolves with the print failure
  * reason (or null); a print failure never blocks queueing. Rejects if the photo could not be composed, saved or
- * queued, since the guest's photo could then be lost.
+ * queued, since the guest's photo could then be lost. A retry passes `priorPrint` so the sheet prints only once.
  */
 export async function runOutput(d: OutputDeps): Promise<{ printError: string | null; sheet: Blob }> {
   const sheet = await d.compose();
@@ -42,10 +46,18 @@ export async function runOutput(d: OutputDeps): Promise<{ printError: string | n
     d.onEnqueued();
   };
 
-  const printing = d.bridge.print(jpeg, d.copies).then(
-    (r) => (r.ok ? null : r.reason),
-    (err: unknown) => (err instanceof Error ? err.message : String(err)),
-  );
+  const printing = d.priorPrint
+    ? Promise.resolve(d.priorPrint.printError)
+    : d.bridge
+        .print(jpeg, d.copies)
+        .then(
+          (r) => (r.ok ? null : r.reason),
+          (err: unknown) => (err instanceof Error ? err.message : String(err)),
+        )
+        .then((printError) => {
+          d.onPrinted?.(printError);
+          return printError;
+        });
   const queued = enqueue([
     { id: d.newId(), kind: 'upsert_session', row: row(null), ...fresh },
     { id: d.newId(), kind: 'upload_photo', sessionId, filePath, ...fresh },

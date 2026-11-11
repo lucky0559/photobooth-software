@@ -41,6 +41,8 @@ export function Output({
 }) {
   const [failed, setFailed] = useState(false);
   const running = useRef(false);
+  /** Print outcome per session, so Try again never prints a second sheet. */
+  const printed = useRef<{ sessionId: string; printError: string | null } | null>(null);
 
   const run = useCallback((): void => {
     if (running.current) return;
@@ -66,6 +68,10 @@ export function Output({
           },
           now: Date.now,
           newId: () => crypto.randomUUID(),
+          priorPrint: printed.current?.sessionId === state.sessionId ? printed.current : undefined,
+          onPrinted: (printError) => {
+            printed.current = { sessionId: state.sessionId, printError };
+          },
         });
         if (import.meta.env.VITE_FAKE_API === '1') recordSheet(sheet);
         dispatch({ type: 'OUTPUT_DONE', printError, now: Date.now() });

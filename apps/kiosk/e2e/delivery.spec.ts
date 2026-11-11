@@ -125,6 +125,10 @@ test('queued jobs survive an app restart', async () => {
   let page = await launch({ failUploads: 1000 });
   await finishSession(page);
   await expect(deliveryHeading(page)).toBeVisible({ timeout: 15_000 });
+  // The QR does not wait for the upload: it is visible while the upload job is still queued.
+  await expect(page.getByRole('img', { name: 'QR code to download your photo' })).toBeVisible();
+  expect(await debug(page).queueLength()).toBeGreaterThan(0);
+  await expect(page.getByText('QR unavailable — please call staff')).toHaveCount(0);
   // The session row syncs; the upload keeps failing and stays queued.
   await expect.poll(debug(page).queueLength, { timeout: 10_000 }).toBe(1);
   await app!.close();
