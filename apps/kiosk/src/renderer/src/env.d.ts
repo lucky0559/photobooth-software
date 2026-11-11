@@ -12,6 +12,11 @@ declare global {
   interface Window {
     kiosk: KioskBridge;
     /** e2e-only helpers, installed only when `VITE_FAKE_API=1`. */
-    __pbDebug?: { shotCount(): number; killCamera(): void };
+    __pbDebug?: {
+      shotCount(): number;
+      killCamera(): void;
+      lastSheet(): Promise<{ width: number; height: number; type: string } | null>;
+      lastSheetPixel(x: number, y: number): Promise<[number, number, number, number] | null>;
+    };
   }
 }

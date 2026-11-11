@@ -1,8 +1,12 @@
+import type { KioskState, Template } from '@pb/core';
 import { useEffect, useRef, useState } from 'react';
 import type { KioskApi } from './api/kiosk-api';
+import { buildSessionSheet } from './compose/session-sheet';
+import { recordSheet } from './debug/last-sheet';
 import { Attract } from './screens/Attract';
 import { Capture } from './screens/Capture';
 import { PinPrompt } from './screens/PinPrompt';
+import { Review } from './screens/Review';
 import { Setup, type SetupAuth } from './screens/Setup';
 import { registerTap } from './setup/secret-tap';
 import { attractStatus } from './state/settings-sync';
@@ -55,13 +59,13 @@ function KioskFlow({ api, cameraId, onSecretTap }: { api: KioskApi; cameraId: st
       );
     case 'capture':
       return <Capture state={state} settings={settings} cameraId={cameraId} dispatch={dispatch} />;
-    // Placeholders: Payment, Review, Output and Delivery screens arrive in later tasks.
+    // Placeholders: Payment, Output and Delivery screens arrive in later tasks.
     case 'payment':
       return <Placeholder title="Payment" />;
     case 'review':
-      return <Placeholder title="Pick a look" />;
+      return template ? <Review state={state} template={template} dispatch={dispatch} /> : <Placeholder title="Pick a look" />;
     case 'output':
-      return <Placeholder title="Printing your photo…" />;
+      return <OutputPlaceholder state={state} template={template} />;
     case 'delivery':
       return <Placeholder title="Scan to download your photo" />;
   }
@@ -73,4 +77,20 @@ function Placeholder({ title }: { title: string }) {
       <h1>{title}</h1>
     </main>
   );
+}
+
+/** Composes the print sheet once on entry. Printing and upload replace this in Tasks 9–10. */
+function OutputPlaceholder({ state, template }: { state: Extract<KioskState, { name: 'output' }>; template: Template | null }) {
+  const started = useRef(false);
+  useEffect(() => {
+    if (started.current || !template) return;
+    started.current = true;
+    buildSessionSheet({ template, shotIds: state.shots, filter: state.filter }).then(
+      (sheet) => {
+        if (import.meta.env.VITE_FAKE_API === '1') recordSheet(sheet);
+      },
+      (err: unknown) => console.error('Composing print sheet failed', err),
+    );
+  }, [state, template]);
+  return <Placeholder title="Printing your photo…" />;
 }

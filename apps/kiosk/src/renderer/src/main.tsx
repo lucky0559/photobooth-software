@@ -7,6 +7,7 @@ import type { KioskApi } from './api/kiosk-api';
 import { SupabaseKioskApi } from './api/supabase-api';
 import { simulateCameraLoss } from './camera/camera';
 import { shotStore } from './camera/shot-store';
+import { lastSheetInfo, lastSheetPixel } from './debug/last-sheet';
 import type { SetupAuth } from './screens/Setup';
 import './styles.css';
 
@@ -24,7 +25,12 @@ const { api, auth } = createApi();
 
 // e2e-only helpers; the whole block is dropped from production builds.
 if (import.meta.env.VITE_FAKE_API === '1') {
-  window.__pbDebug = { shotCount: () => shotStore.size(), killCamera: simulateCameraLoss };
+  window.__pbDebug = {
+    shotCount: () => shotStore.size(),
+    killCamera: simulateCameraLoss,
+    lastSheet: lastSheetInfo,
+    lastSheetPixel,
+  };
 }
 
 createRoot(document.getElementById('root') as HTMLElement).render(

@@ -160,6 +160,50 @@ body,
   text-align: center;
 }
 
+.review {
+  justify-content: flex-start;
+  gap: 24px;
+  padding: 48px;
+}
+
+.review .review-preview {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-width: 100%;
+  object-fit: contain;
+  background: #fff;
+}
+
+.review .filters {
+  display: flex;
+  gap: 24px;
+}
+
+.review .filters button {
+  font-size: 36px;
+  padding: 24px 40px;
+  border-radius: 20px;
+  border: 3px solid #666;
+  background: #111;
+  color: #fff;
+}
+
+.review .filters button[aria-pressed='true'] {
+  border-color: #fff;
+  background: #fff;
+  color: #000;
+}
+
+.review button.primary {
+  font-size: 48px;
+  font-weight: 700;
+  padding: 32px 96px;
+  border-radius: 24px;
+  border: none;
+  background: #fff;
+  color: #000;
+}
+
 .secret-corner {
   position: fixed;
   top: 0;
