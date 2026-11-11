@@ -456,17 +456,19 @@ body,
   image-rendering: pixelated;
 }
 
-/* Delivery */
+/* Delivery and Payment */
 
-/* Portrait: QR card, then the note and Done below it. Landscape: note and Done beside the card. */
-.delivery__body {
+/* Portrait: QR card, then the text and button below it. Landscape: text and button beside the card. */
+.delivery__body,
+.payment__body {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: var(--gap);
 }
 
-.delivery__side {
+.delivery__side,
+.payment__side {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -474,21 +476,71 @@ body,
 }
 
 @media (orientation: landscape) {
-  .delivery__body {
+  .delivery__body,
+  .payment__body {
     flex-direction: row;
     gap: calc(var(--gap) * 2);
   }
 
-  .delivery__side {
+  .delivery__side,
+  .payment__side {
     max-width: min(40vw, 760px);
   }
 }
 
 .delivery .qr-img,
-.delivery .qr-slot {
+.delivery .qr-slot,
+.payment .qr-img,
+.payment .qr-slot {
   width: min(52vmin, 28vh);
 }
 
+/* Payment keeps the slot (the theme spec measures it) and puts the QR image inside it. */
+.payment .qr-slot.qr-slot--filled {
+  border: none;
+  padding: 0;
+}
+
+/* The amount is written in the polaroid's deep bottom margin, like a caption. */
+.payment .framed-card--polaroid {
+  padding-bottom: clamp(14px, 2.4vmin, 36px);
+}
+
+.payment__amount {
+  margin: clamp(10px, 1.6vmin, 24px) 0 0;
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: clamp(44px, 5.6vmin, 92px);
+  line-height: 1.1;
+  text-align: center;
+}
+
+.payment__scan,
+.payment__checking {
+  margin: 0;
+  max-width: min(90vw, 900px);
+  font-weight: 700;
+  font-size: clamp(26px, 3.2vmin, 48px);
+  line-height: 1.25;
+  text-align: center;
+}
+
+.payment__scan {
+  padding: calc(var(--gap) * 0.5) var(--gap);
+  color: var(--paper);
+  background: var(--ink);
+  border-radius: 12px;
+}
+
+.payment__checking {
+  padding: calc(var(--gap) * 0.6) var(--gap);
+  border: 3px solid var(--ink);
+  border-radius: 12px;
+  background: var(--lime);
+  color: var(--ink);
+}
+
+.payment .qr-slot,
 .delivery .qr-slot {
   display: flex;
   align-items: center;

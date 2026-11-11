@@ -1,10 +1,10 @@
-import { PAYMENT_TIMEOUT_MS } from '@pb/core';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { KioskApi } from './api/kiosk-api';
 import { Attract } from './screens/Attract';
 import { Capture } from './screens/Capture';
 import { Delivery } from './screens/Delivery';
 import { Output } from './screens/Output';
+import { Payment } from './screens/Payment';
 import { PinPrompt } from './screens/PinPrompt';
 import { Review } from './screens/Review';
 import { Setup, type SetupAuth } from './screens/Setup';
@@ -14,12 +14,6 @@ import { useKiosk } from './state/useKiosk';
 import { QUEUE_INTERVAL_MS, startQueueRunner, type QueueRunner } from './sync/queue';
 import { Backdrop } from './theme/components/Backdrop';
 import { BannerTitle } from './theme/components/BannerTitle';
-import { FramedCard } from './theme/components/FramedCard';
-import { TimerPill } from './theme/components/TimerPill';
-import { FlashBolt } from './theme/decor/FlashBolt';
-import { Sparkle } from './theme/decor/Sparkle';
-import { Sprocket } from './theme/decor/Sprocket';
-import { useRemainingMs } from './theme/time';
 
 type Screen = 'loading' | 'setup' | 'pin' | 'kiosk';
 
@@ -94,9 +88,16 @@ function KioskFlow({
       );
     case 'capture':
       return <Capture state={state} settings={settings} cameraId={cameraId} dispatch={dispatch} />;
-    // Placeholder: the Payment screen arrives in Task 11.
     case 'payment':
-      return <QrPlaceholder title="Payment" deadline={state.startedAt + PAYMENT_TIMEOUT_MS} />;
+      return (
+        <Payment
+          state={state}
+          api={api}
+          downloadToken={downloadToken}
+          templateId={template?.id ?? settings.activeTemplateId}
+          dispatch={dispatch}
+        />
+      );
     case 'review':
       return template ? (
         <Review state={state} template={template} dispatch={dispatch} />
@@ -121,31 +122,4 @@ function KioskFlow({
     case 'delivery':
       return <Delivery state={state} downloadToken={downloadToken} dispatch={dispatch} />;
   }
-}
-
-/**
- * Themed shell for the payment screen: striped backdrop, timer pill, title and a taped polaroid card with an
- * empty QR slot. Task 11 puts the real QR and copy into `.qr-slot`.
- */
-function QrPlaceholder({ title, deadline }: { title: string; deadline: number }) {
-  const remainingMs = useRemainingMs(deadline);
-  return (
-    <main className="stage qr-screen">
-      <Backdrop kind="stripes" />
-      <div className="topbar">
-        <TimerPill remainingMs={remainingMs} />
-        <Sparkle size="9vmin" fill="var(--lime)" wobble />
-      </div>
-      <BannerTitle tone="ink" tilt={-2}>
-        {title}
-      </BannerTitle>
-      <FramedCard polaroid className="qr-card">
-        <div className="qr-slot" />
-      </FramedCard>
-      <div className="decor-row">
-        <Sprocket size="11vmin" className="decor--spin" />
-        <FlashBolt size="8vmin" fill="var(--tangerine)" wobble />
-      </div>
-    </main>
-  );
 }
