@@ -17,18 +17,43 @@ export interface QueueDeps {
   now: number;
 }
 
+/** Readable message for anything thrown (Supabase rejects with plain `{ message, code }` objects). */
+export function errorMessage(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  if (typeof err === 'object' && err !== null) {
+    const { message } = err as { message?: unknown };
+    if (typeof message === 'string') return message;
+    try {
+      return JSON.stringify(err);
+    } catch {
+      return String(err);
+    }
+  }
+  return String(err);
+}
+
 /**
- * Runs the due jobs in order. An `upload_photo` job is never attempted while an `upsert_session` job for the
- * same session is still queued (not due, failed, or listed after it). Never rejects.
+ * Runs the due jobs in order. Per session, `upsert_session` jobs run FIFO (a later row never syncs before an
+ * earlier one that is still pending, so a stale row cannot overwrite a newer one), and an `upload_photo` job is
+ * never attempted while an `upsert_session` job for the same session is still queued (not due, failed, or
+ * listed after it). Never rejects.
  */
 export async function processQueue(jobs: QueueJob[], deps: QueueDeps): Promise<QueueResult> {
   const result: QueueResult = { done: [], failed: [] };
   const pendingRows = new Map<string, number>();
   for (const j of jobs) if (j.kind === 'upsert_session') pendingRows.set(j.row.id, (pendingRows.get(j.row.id) ?? 0) + 1);
+  /** Sessions with an earlier upsert that was skipped or failed in this run. */
+  const blockedRows = new Set<string>();
 
   for (const job of jobs) {
-    if (job.nextAttemptAt > deps.now) continue;
-    if (job.kind === 'upload_photo' && (pendingRows.get(job.sessionId) ?? 0) > 0) continue;
+    if (job.kind === 'upsert_session') {
+      if (blockedRows.has(job.row.id) || job.nextAttemptAt > deps.now) {
+        blockedRows.add(job.row.id);
+        continue;
+      }
+    } else if (job.nextAttemptAt > deps.now || (pendingRows.get(job.sessionId) ?? 0) > 0) {
+      continue;
+    }
     try {
       if (job.kind === 'upsert_session') {
         await deps.api.upsertSession(job.row);
@@ -38,11 +63,8 @@ export async function processQueue(jobs: QueueJob[], deps: QueueDeps): Promise<Q
       }
       result.done.push(job.id);
     } catch (err) {
-      result.failed.push({
-        id: job.id,
-        error: err instanceof Error ? err.message : String(err),
-        nextAttemptAt: nextAttemptAt(job.attempts, deps.now),
-      });
+      if (job.kind === 'upsert_session') blockedRows.add(job.row.id);
+      result.failed.push({ id: job.id, error: errorMessage(err), nextAttemptAt: nextAttemptAt(job.attempts, deps.now) });
     }
   }
   return result;
@@ -62,7 +84,9 @@ export function startQueueRunner(
 ): QueueRunner {
   let running = false;
   let again = false;
+  let stopped = false;
   const run = async (): Promise<void> => {
+    if (stopped) return;
     if (running) {
       again = true;
       return;
@@ -72,10 +96,12 @@ export function startQueueRunner(
       do {
         again = false;
         const jobs = await bridge.queueList();
-        if (jobs.length === 0) continue;
+        // A runner stopped mid-run neither starts processing nor applies its (possibly stale) result.
+        if (stopped || jobs.length === 0) continue;
         const result = await processQueue(jobs, { api, readPhoto: (p) => bridge.readPhoto(p), now: Date.now() });
+        if (stopped) break;
         if (result.done.length > 0 || result.failed.length > 0) await bridge.queueApply(result);
-      } while (again);
+      } while (again && !stopped);
     } catch (err) {
       console.error('Sync queue run failed', err);
     } finally {
@@ -84,5 +110,11 @@ export function startQueueRunner(
   };
   const id = setInterval(() => void run(), intervalMs);
   void run();
-  return { kick: () => void run(), stop: () => clearInterval(id) };
+  return {
+    kick: () => void run(),
+    stop: () => {
+      stopped = true;
+      clearInterval(id);
+    },
+  };
 }

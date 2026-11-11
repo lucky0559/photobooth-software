@@ -1,7 +1,7 @@
 import type { SessionSync } from '@pb/core';
 import { describe, expect, it, vi } from 'vitest';
 import type { KioskApi } from '../src/renderer/src/api/kiosk-api';
-import { nextAttemptAt, processQueue, type QueueJob } from '../src/renderer/src/sync/queue';
+import { nextAttemptAt, processQueue, startQueueRunner, type QueueJob } from '../src/renderer/src/sync/queue';
 
 const row: SessionSync = {
   id: 's1',
@@ -37,6 +37,25 @@ function fakeApi(over: Partial<Pick<KioskApi, 'upsertSession' | 'uploadPhoto'>> 
 }
 
 const readPhoto = vi.fn(async () => new ArrayBuffer(4));
+
+describe('startQueueRunner', () => {
+  it('a stopped runner does not apply the result of a run in flight', async () => {
+    let release!: (jobs: QueueJob[]) => void;
+    const bridge = {
+      queueList: vi.fn(() => new Promise<QueueJob[]>((res) => (release = res))),
+      queueApply: vi.fn(async () => {}),
+      readPhoto,
+    };
+    const runner = startQueueRunner(fakeApi(), bridge, 60_000);
+    runner.stop();
+    release([upsert()]);
+    await new Promise((r) => setTimeout(r, 10));
+    expect(bridge.queueApply).not.toHaveBeenCalled();
+    runner.kick();
+    await new Promise((r) => setTimeout(r, 10));
+    expect(bridge.queueList).toHaveBeenCalledTimes(1);
+  });
+});
 
 describe('nextAttemptAt', () => {
   it('backoff doubles from 5s and caps at 5 minutes', () => {
@@ -109,6 +128,49 @@ describe('processQueue', () => {
     expect(r.done).toEqual([]);
     expect(r.failed).toEqual([{ id: 'j2', error: 'offline', nextAttemptAt: nextAttemptAt(2, 1000) }]);
     expect(r.failed[0]!.nextAttemptAt).toBe(21_000);
+  });
+
+  it('runs upserts for a session FIFO: a later upsert waits behind an earlier pending one', async () => {
+    const first = upsert({ id: 'u1', nextAttemptAt: 5000, attempts: 1, lastError: 'offline' });
+    const second = upsert({ id: 'u2', row: { ...row, printError: 'out of paper' } } as Partial<QueueJob>);
+    const synced: SessionSync[] = [];
+    const api = fakeApi({ upsertSession: vi.fn(async (r: SessionSync) => void synced.push(r)) });
+
+    // u1 is not due yet: u2 (and the upload) must wait.
+    let r = await processQueue([first, second, upload()], { api, readPhoto, now: 100 });
+    expect(r).toEqual({ done: [], failed: [] });
+
+    // u1 due but failing again: u2 still waits.
+    const failing = fakeApi({ upsertSession: vi.fn(async () => Promise.reject(new Error('offline'))) });
+    r = await processQueue([{ ...first, nextAttemptAt: 0 }, second, upload()], { api: failing, readPhoto, now: 100 });
+    expect(r.done).toEqual([]);
+    expect(r.failed.map((f) => f.id)).toEqual(['u1']);
+    expect(failing.upsertSession).toHaveBeenCalledTimes(1);
+
+    // Once u1 is due and succeeds, u2 runs after it, so the last synced row carries the print error.
+    r = await processQueue([{ ...first, nextAttemptAt: 0 }, second, upload()], { api, readPhoto, now: 100 });
+    expect(r.done).toEqual(['u1', 'u2', 'j2']);
+    expect(synced.map((s) => s.printError)).toEqual([null, 'out of paper']);
+  });
+
+  it('upserts of other sessions are not blocked', async () => {
+    const api = fakeApi();
+    const other = upsert({ id: 'o1', row: { ...row, id: 's2' } } as Partial<QueueJob>);
+    const r = await processQueue([upsert({ nextAttemptAt: 5000 }), other], { api, readPhoto, now: 100 });
+    expect(r.done).toEqual(['o1']);
+  });
+
+  it('keeps a readable message for non-Error failures', async () => {
+    const throwing = (value: unknown) =>
+      fakeApi({ upsertSession: vi.fn(async () => Promise.reject(value)) });
+    const run = async (value: unknown) =>
+      (await processQueue([upsert()], { api: throwing(value), readPhoto, now: 0 })).failed[0]!.error;
+    expect(await run({ message: 'JWT expired', code: 'PGRST301' })).toBe('JWT expired');
+    expect(await run({ code: 42 })).toBe('{"code":42}');
+    expect(await run('plain')).toBe('plain');
+    const cyclic: Record<string, unknown> = {};
+    cyclic.self = cyclic;
+    expect(await run(cyclic)).toBe('[object Object]');
   });
 
   it('reports a failed photo read as a job failure', async () => {
