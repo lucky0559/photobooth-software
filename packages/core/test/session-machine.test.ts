@@ -41,6 +41,20 @@ describe('transition', () => {
     expect(transition(d, { type: 'TICK', now: 44_999 }, paid)).toBe(d);
     expect(transition(d, { type: 'TICK', now: 45_000 }, paid)).toEqual({ name: 'attract' });
   });
+  it('DONE returns delivery to attract', () => {
+    const d = { name: 'delivery', sessionId: 's1', printError: 'jam', enteredAt: 0 } as KioskState;
+    expect(transition(d, { type: 'DONE' }, paid)).toEqual({ name: 'attract' });
+  });
+  it('DONE is ignored outside delivery (same reference)', () => {
+    const states: KioskState[] = [
+      { name: 'attract' },
+      { name: 'payment', sessionId: 's1', amountCentavos: 15000, startedAt: 0 },
+      { name: 'capture', sessionId: 's1', amountCentavos: 0, shots: [] },
+      { name: 'review', sessionId: 's1', amountCentavos: 0, shots: ['a'], filter: 'none', enteredAt: 0 },
+      { name: 'output', sessionId: 's1', amountCentavos: 0, shots: ['a'], filter: 'none' },
+    ];
+    for (const s of states) expect(transition(s, { type: 'DONE' }, paid)).toBe(s);
+  });
   it('payment never leaves on TICK, however late', () => {
     const p = { name: 'payment', sessionId: 's1', amountCentavos: 15000, startedAt: 0 } as KioskState;
     expect(transition(p, { type: 'TICK', now: 10_000_000 }, paid)).toBe(p);

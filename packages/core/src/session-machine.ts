@@ -25,6 +25,7 @@ export type KioskEvent =
   | { type: 'FILTER_SELECTED'; filter: FilterId }
   | { type: 'CONFIRM'; now: number }
   | { type: 'OUTPUT_DONE'; printError: string | null; now: number }
+  | { type: 'DONE' }
   | { type: 'TICK'; now: number };
 
 export function transition(state: KioskState, event: KioskEvent, settings: KioskSettings): KioskState {
@@ -83,6 +84,7 @@ export function transition(state: KioskState, event: KioskEvent, settings: Kiosk
       }
       return state;
     case 'delivery':
+      if (event.type === 'DONE') return { name: 'attract' };
       if (event.type === 'TICK' && event.now - state.enteredAt >= DELIVERY_TIMEOUT_MS) return { name: 'attract' };
       return state;
   }
