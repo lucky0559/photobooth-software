@@ -18,3 +18,9 @@ Expected:
 | Printer model | Driver / version | Paper size | Cut on/off | Result (pass/fail, notes) |
 | --- | --- | --- | --- | --- |
 |  |  |  |  |  |
+
+Additional Task 9 check: print a REAL photo sheet (a full-colour 1200x1800 photo composed in the kiosk, JPEG of at least 1 MB), not only the test page, and confirm it prints.
+
+| Printer model | Real photo sheet size (MB) | Result (pass/fail, notes) |
+| --- | --- | --- |
+|  |  |  |

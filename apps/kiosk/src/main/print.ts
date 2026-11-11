@@ -7,7 +7,7 @@ export const MAX_JPEG_BYTES = 20 * 1024 * 1024;
 
 /** The slice of a hidden BrowserWindow that `printSheet` uses (injectable for tests). */
 export interface PrintWindow {
-  loadURL(url: string): Promise<void>;
+  loadFile(path: string): Promise<void>;
   webContents: {
     print(options: WebContentsPrintOptions, callback: (success: boolean, failureReason: string) => void): void;
   };
@@ -57,25 +57,58 @@ async function createHiddenWindow(): Promise<PrintWindow> {
   });
 }
 
-/** Prints a 4x6 JPEG silently. Always closes its window; resolves `reason: 'timeout'` after 60 s. */
+export interface PrintDeps {
+  createWindow: () => PrintWindow | Promise<PrintWindow>;
+  /** Writes the HTML to a unique temp file and returns its path. */
+  writeTempHtml: (html: string) => Promise<string>;
+  removeFile: (path: string) => Promise<void>;
+}
+
+const defaultDeps: PrintDeps = {
+  createWindow: createHiddenWindow,
+  async writeTempHtml(html) {
+    const { writeFile } = await import('node:fs/promises');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const { randomUUID } = await import('node:crypto');
+    const path = join(tmpdir(), `pb-print-${randomUUID()}.html`);
+    await writeFile(path, html);
+    return path;
+  },
+  async removeFile(path) {
+    const { rm } = await import('node:fs/promises');
+    await rm(path, { force: true });
+  },
+};
+
+/**
+ * Prints a 4x6 JPEG silently. The HTML is loaded from a temp file (a data: URL would exceed Chromium's
+ * ~2 MB navigation URL cap for real photo sheets). Always closes its window and removes the temp file;
+ * resolves `reason: 'timeout'` after 60 s.
+ */
 export async function printSheet(
   jpeg: Buffer,
   copies: number,
   deviceName: string | null,
-  createWindow: () => PrintWindow | Promise<PrintWindow> = createHiddenWindow,
+  deps: Partial<PrintDeps> = {},
 ): Promise<PrintResult> {
+  const { createWindow, writeTempHtml, removeFile } = { ...defaultDeps, ...deps };
   const win = await createWindow();
   let timer: ReturnType<typeof setTimeout> | undefined;
+  let file: string | undefined;
   try {
     const html = buildPrintHtml(`data:image/jpeg;base64,${jpeg.toString('base64')}`);
     const printed = (async (): Promise<PrintResult> => {
-      await win.loadURL(`data:text/html;base64,${Buffer.from(html).toString('base64')}`);
+      file = await writeTempHtml(html);
+      await win.loadFile(file);
       return new Promise<PrintResult>((resolve) => {
         win.webContents.print(printOptions(copies, deviceName), (success, failureReason) =>
           resolve(success ? { ok: true } : { ok: false, reason: failureReason || 'print failed' }),
         );
       });
     })();
+    // After a timeout `printed` may still settle (e.g. reject once the window is closed).
+    printed.catch(() => {});
     const timeout = new Promise<PrintResult>((resolve) => {
       timer = setTimeout(() => resolve({ ok: false, reason: 'timeout' }), PRINT_TIMEOUT_MS);
     });
@@ -84,13 +117,16 @@ export async function printSheet(
     return { ok: false, reason: err instanceof Error ? err.message : String(err) };
   } finally {
     clearTimeout(timer);
-    win.close();
+    try {
+      win.close();
+    } catch {
+      // A failing close must not mask the print result.
+    }
+    if (file !== undefined) await removeFile(file).catch(() => {});
   }
 }
 
-export async function listPrinters(): Promise<string[]> {
-  const { BrowserWindow } = await import('electron');
-  const wc = BrowserWindow.getAllWindows()[0]?.webContents;
-  if (!wc) return [];
+/** Printer names as seen by the given window (the IPC sender). */
+export async function listPrinters(wc: { getPrintersAsync(): Promise<{ name: string }[]> }): Promise<string[]> {
   return (await wc.getPrintersAsync()).map((p) => p.name);
 }

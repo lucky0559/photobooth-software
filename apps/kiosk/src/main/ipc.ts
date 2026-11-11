@@ -55,7 +55,7 @@ export function registerIpc(store: JsonStore<LocalConfig>, overlayDir: string): 
     return printSheet(bytes, copies as number, store.get().printerName);
   });
 
-  ipcMain.handle(IPC.listPrinters, () => (fakePrint ? ['Fake Printer'] : listPrinters()));
+  ipcMain.handle(IPC.listPrinters, (e) => (fakePrint ? ['Fake Printer'] : listPrinters(e.sender)));
 
   if (fakePrint) ipcMain.handle(IPC.debugPrintCalls, () => fakePrintCalls);
 
