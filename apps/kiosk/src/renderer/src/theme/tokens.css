@@ -1,0 +1,9 @@
+/* "Pop Film Lab" palette from docs/DESIGN.md. Colors must mirror TOKENS in contrast.ts. */
+:root {
+  --ink: #0F1B3D;
+  --ink-2: #1F2E5C;
+  --paper: #FAF7F0;
+  --lime: #C6F432;
+  --tangerine: #FF6B2C;
+  --aqua: #2EE6D6;
+}
