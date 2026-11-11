@@ -78,6 +78,10 @@ export class SupabaseKioskApi implements KioskApi {
     }>('create-payment', { body: i });
     if (error) throw error;
     if (!data) throw new Error('create-payment returned no data');
+    // The QR goes straight into an <img src>: accept only an inline image.
+    if (typeof data.qrImageDataUrl !== 'string' || !data.qrImageDataUrl.startsWith('data:image/')) {
+      throw new Error('create-payment returned an invalid QR image');
+    }
     return data;
   }
 

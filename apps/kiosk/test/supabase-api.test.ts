@@ -99,15 +99,28 @@ describe('SupabaseKioskApi', () => {
   it('createPayment and cancelPayment call the Edge Functions', async () => {
     const invoke = vi.fn((name: unknown) =>
       name === 'create-payment'
-        ? { data: { paymentId: 'p1', qrImageDataUrl: 'data:', amountCentavos: 15000 }, error: null }
+        ? { data: { paymentId: 'p1', qrImageDataUrl: 'data:image/png;base64,AA', amountCentavos: 15000 }, error: null }
         : { data: { status: 'paid' }, error: null },
     );
     const api = new SupabaseKioskApi(client({ invoke }).db);
     const input = { sessionId: 's1', downloadToken: 'tok', templateId: 't1' };
-    expect(await api.createPayment(input)).toEqual({ paymentId: 'p1', qrImageDataUrl: 'data:', amountCentavos: 15000 });
+    expect(await api.createPayment(input)).toEqual({
+      paymentId: 'p1',
+      qrImageDataUrl: 'data:image/png;base64,AA',
+      amountCentavos: 15000,
+    });
     expect(await api.cancelPayment('p1')).toBe('paid');
     expect(invoke).toHaveBeenNthCalledWith(1, 'create-payment', { body: input });
     expect(invoke).toHaveBeenNthCalledWith(2, 'cancel-payment', { body: { paymentId: 'p1' } });
+  });
+
+  it('createPayment rejects a QR that is not a data:image/ URL', async () => {
+    const input = { sessionId: 's1', downloadToken: 'tok', templateId: 't1' };
+    for (const qrImageDataUrl of ['https://evil.example/qr.png', 'data:text/html,<b>x</b>', '', undefined]) {
+      const invoke = vi.fn(() => ({ data: { paymentId: 'p1', qrImageDataUrl, amountCentavos: 15000 }, error: null }));
+      const api = new SupabaseKioskApi(client({ invoke }).db);
+      await expect(api.createPayment(input)).rejects.toThrow('QR');
+    }
   });
 
   it('getPaymentStatus selects payments.status by id', async () => {
