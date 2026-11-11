@@ -41,6 +41,26 @@ describe('transition', () => {
     expect(transition(d, { type: 'TICK', now: 44_999 }, paid)).toBe(d);
     expect(transition(d, { type: 'TICK', now: 45_000 }, paid)).toEqual({ name: 'attract' });
   });
+  it('payment never leaves on TICK, however late', () => {
+    const p = { name: 'payment', sessionId: 's1', amountCentavos: 15000, startedAt: 0 } as KioskState;
+    expect(transition(p, { type: 'TICK', now: 10_000_000 }, paid)).toBe(p);
+  });
+  it('FILTER_SELECTED sets the filter in review', () => {
+    const r = { name: 'review', sessionId: 's1', amountCentavos: 0, shots: ['a'], filter: 'none', enteredAt: 0 } as KioskState;
+    expect(transition(r, { type: 'FILTER_SELECTED', filter: 'warm' }, paid)).toEqual({ ...r, filter: 'warm' });
+  });
+  it('CONFIRM moves review to output keeping shots and filter', () => {
+    const r = { name: 'review', sessionId: 's1', amountCentavos: 0, shots: ['a'], filter: 'bw', enteredAt: 0 } as KioskState;
+    expect(transition(r, { type: 'CONFIRM', now: 5 }, paid)).toEqual({ name: 'output', sessionId: 's1', amountCentavos: 0, shots: ['a'], filter: 'bw' });
+  });
+  it('OUTPUT_DONE moves output to delivery', () => {
+    const o = { name: 'output', sessionId: 's1', amountCentavos: 0, shots: ['a'], filter: 'bw' } as KioskState;
+    expect(transition(o, { type: 'OUTPUT_DONE', printError: 'jam', now: 7 }, paid)).toEqual({ name: 'delivery', sessionId: 's1', printError: 'jam', enteredAt: 7 });
+  });
+  it('CAMERA_RETRY without an error returns the same reference', () => {
+    const c = { name: 'capture', sessionId: 's1', amountCentavos: 0, shots: [] } as KioskState;
+    expect(transition(c, { type: 'CAMERA_RETRY' }, paid)).toBe(c);
+  });
   it('ignores events that do not apply (same reference)', () => {
     const a = { name: 'attract' } as KioskState;
     expect(transition(a, { type: 'SHOT_TAKEN', shotId: 'x', now: 0 }, paid)).toBe(a);

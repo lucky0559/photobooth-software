@@ -42,7 +42,6 @@ export function transition(state: KioskState, event: KioskEvent, settings: Kiosk
         return { name: 'capture', sessionId: state.sessionId, amountCentavos: state.amountCentavos, shots: [] };
       }
       if (event.type === 'PAYMENT_CANCELLED') return { name: 'attract' };
-      if (event.type === 'TICK' && event.now - state.startedAt >= PAYMENT_TIMEOUT_MS) return { name: 'attract' };
       return state;
     case 'capture':
       if (event.type === 'SHOT_TAKEN') {
