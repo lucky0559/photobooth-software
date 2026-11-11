@@ -1,0 +1,16 @@
+node_modules/
+dist/
+out/
+build/
+.next/
+coverage/
+playwright-report/
+test-results/
+*.log
+.env
+.env.*
+!.env.example
+supabase/.env.local
+supabase/.temp/
+.superpowers/
+.DS_Store
