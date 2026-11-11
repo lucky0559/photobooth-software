@@ -7,6 +7,10 @@ export interface FakeConfig {
   /** Payment flips to `paid` this many ms after creation; `null` = never. */
   payAfterMs: number | null;
   cancelReturns: 'cancelled' | 'paid';
+  /** `createPayment` rejects (the "Payments are unavailable" path). */
+  createPaymentFails?: boolean;
+  /** The next N `cancelPayment` calls reject (the "Checking your payment…" retry path). */
+  cancelThrows?: number;
   /** The next N `uploadPhoto` calls reject. */
   failUploads: number;
   /** The next N print-sheet compositions on the Output screen reject (R13 error path). */
@@ -73,6 +77,8 @@ export class FakeKioskApi implements KioskApi {
   readonly photos = new Map<string, ArrayBuffer>();
   private readonly payments = new Map<string, FakePayment>();
   private nextPayment = 1;
+  /** Every `createPayment` call, including failed ones (e2e asserts one per session). */
+  createPaymentCalls = 0;
 
   constructor(
     private readonly config: () => FakeConfig,
@@ -94,8 +100,10 @@ export class FakeKioskApi implements KioskApi {
     downloadToken: string;
     templateId: string;
   }): Promise<{ paymentId: string; qrImageDataUrl: string; amountCentavos: number }> {
+    this.createPaymentCalls += 1;
     const settings = await this.getSettings();
     if (settings.freeMode) throw new Error('free_mode');
+    if (this.config().createPaymentFails) throw new Error('Fake createPayment failure');
     const paymentId = `fake-pay-${this.nextPayment++}`;
     this.payments.set(paymentId, { createdAt: this.now(), status: 'pending' });
     return { paymentId, qrImageDataUrl: FAKE_QR, amountCentavos: settings.priceCentavos };
@@ -110,6 +118,11 @@ export class FakeKioskApi implements KioskApi {
 
   async cancelPayment(paymentId: string): Promise<'cancelled' | 'paid'> {
     const p = this.payment(paymentId);
+    const cfg = this.config();
+    if ((cfg.cancelThrows ?? 0) > 0) {
+      cfg.cancelThrows = (cfg.cancelThrows ?? 0) - 1;
+      throw new Error('Fake cancelPayment failure');
+    }
     if ((await this.getPaymentStatus(paymentId)) !== 'paid') p.status = this.config().cancelReturns;
     return p.status === 'paid' ? 'paid' : 'cancelled';
   }

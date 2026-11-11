@@ -2,7 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App';
-import { createFakeKioskApi } from './api/fake-api';
+import { createFakeKioskApi, FakeKioskApi } from './api/fake-api';
 import type { KioskApi } from './api/kiosk-api';
 import { SupabaseKioskApi } from './api/supabase-api';
 import { simulateCameraLoss } from './camera/camera';
@@ -38,6 +38,7 @@ if (import.meta.env.VITE_FAKE_API === '1') {
     lastSheetPixel,
     printCalls: () => (window.__pbPrintCalls ? window.__pbPrintCalls() : Promise.resolve(0)),
     queueLength: async () => (await window.kiosk.queueList()).length,
+    createPaymentCalls: () => (api instanceof FakeKioskApi ? api.createPaymentCalls : 0),
   };
 }
 

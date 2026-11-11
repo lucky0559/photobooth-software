@@ -18,6 +18,8 @@ declare global {
       printCalls(): Promise<number>;
       /** Number of jobs in the persisted sync queue. */
       queueLength(): Promise<number>;
+      /** `FakeKioskApi.createPaymentCalls`: one per paid session expected. */
+      createPaymentCalls(): number;
       shotCount(): number;
       killCamera(): void;
       lastSheet(): Promise<{ width: number; height: number; type: string } | null>;

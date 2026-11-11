@@ -47,6 +47,23 @@ describe('FakeKioskApi', () => {
     expect(await api.getPaymentStatus(b.paymentId)).toBe('cancelled');
   });
 
+  it('counts createPayment calls and fails them on createPaymentFails', async () => {
+    const { api, cfg } = setup();
+    await api.createPayment(input);
+    cfg.createPaymentFails = true;
+    await expect(api.createPayment(input)).rejects.toThrow();
+    expect(api.createPaymentCalls).toBe(2);
+  });
+
+  it('cancelPayment throws for the next cancelThrows calls, then answers', async () => {
+    const { api, cfg } = setup({ cancelThrows: 2 });
+    const { paymentId } = await api.createPayment(input);
+    await expect(api.cancelPayment(paymentId)).rejects.toThrow();
+    await expect(api.cancelPayment(paymentId)).rejects.toThrow();
+    expect(cfg.cancelThrows).toBe(0);
+    expect(await api.cancelPayment(paymentId)).toBe('cancelled');
+  });
+
   it('refuses payments in free mode', async () => {
     const { api } = setup({ settings: { freeMode: true } });
     await expect(api.createPayment(input)).rejects.toThrow('free_mode');
