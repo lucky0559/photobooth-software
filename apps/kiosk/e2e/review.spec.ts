@@ -83,7 +83,16 @@ test('Warm + Print composes a 1200×1800 JPEG with two identical strip halves', 
 
   const d = debug(page);
   await expect.poll(d.lastSheet, { timeout: 10_000 }).toEqual({ width: 1200, height: 1800, type: 'image/jpeg' });
-  expect(await d.pixel(300, 900)).toEqual(await d.pixel(900, 900));
+  // Both strip copies are identical. The right copy starts at x=600, off the 16-px JPEG MCU grid,
+  // so compare per channel with a small tolerance rather than exactly.
+  for (const [x, y] of [
+    [300, 900],
+    [150, 400],
+  ] as const) {
+    const left = (await d.pixel(x, y))!;
+    const right = (await d.pixel(x + 600, y))!;
+    for (let c = 0; c < 4; c++) expect(Math.abs(left[c]! - right[c]!), `channel ${c} at (${x}, ${y})`).toBeLessThanOrEqual(6);
+  }
 
   // The fake overlay's #d6336c footer band (bottom 220 px) is drawn on top, unfiltered, on both halves.
   for (const x of [300, 900]) {

@@ -1,5 +1,5 @@
 import { coverFit, layoutSize, printSheetPlacements, SHEET, slotsFor, type FilterId, type LayoutId, type ShotCount } from '@pb/core';
-import { FILTERS } from './filters';
+import { filterCss } from './filters';
 
 export interface ComposeInput {
   layout: LayoutId;
@@ -28,7 +28,7 @@ export function composeLayout({ layout, shots, overlay, filter }: ComposeInput):
   slotsFor(layout, n as ShotCount).forEach((slot, i) => {
     const shot = shots[i] as ImageBitmap;
     const { sx, sy, sw, sh } = coverFit({ w: shot.width, h: shot.height }, slot);
-    ctx.filter = FILTERS[filter].css;
+    ctx.filter = filterCss(filter);
     ctx.drawImage(shot, sx, sy, sw, sh, slot.x, slot.y, slot.w, slot.h);
     ctx.filter = 'none';
   });
