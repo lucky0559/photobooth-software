@@ -1,0 +1,61 @@
+import { DEFAULT_SETTINGS } from '@pb/core';
+import { describe, expect, it } from 'vitest';
+import { FakeKioskApi, parseFakeConfig, type FakeConfig } from '../src/renderer/src/api/fake-api';
+
+const input = { sessionId: 's1', downloadToken: 't', templateId: 'fake-strip' };
+
+function setup(partial: Partial<FakeConfig> = {}) {
+  const cfg: FakeConfig = { ...parseFakeConfig(undefined), ...partial };
+  let t = 0;
+  const api = new FakeKioskApi(() => cfg, () => t);
+  return { api, cfg, advance: (ms: number) => (t += ms) };
+}
+
+describe('FakeKioskApi', () => {
+  it('merges settings over core defaults with fake-strip active', async () => {
+    const { api } = setup({ settings: { priceCentavos: 5000 } });
+    expect(await api.getSettings()).toEqual({ ...DEFAULT_SETTINGS, activeTemplateId: 'fake-strip', priceCentavos: 5000 });
+  });
+
+  it('parses PB_FAKE_CONFIG JSON over defaults', () => {
+    expect(parseFakeConfig('{"payAfterMs":100,"settings":{"freeMode":true}}')).toEqual({
+      settings: { freeMode: true },
+      payAfterMs: 100,
+      cancelReturns: 'cancelled',
+      failUploads: 0,
+    });
+  });
+
+  it('pays after payAfterMs and reads config live', async () => {
+    const { api, cfg, advance } = setup();
+    const { paymentId, amountCentavos } = await api.createPayment(input);
+    expect(amountCentavos).toBe(DEFAULT_SETTINGS.priceCentavos);
+    advance(10_000);
+    expect(await api.getPaymentStatus(paymentId)).toBe('pending');
+    cfg.payAfterMs = 500;
+    expect(await api.getPaymentStatus(paymentId)).toBe('paid');
+  });
+
+  it('cancel returns cancelReturns unless already paid', async () => {
+    const { api, cfg } = setup({ cancelReturns: 'paid' });
+    const a = await api.createPayment(input);
+    expect(await api.cancelPayment(a.paymentId)).toBe('paid');
+    expect(await api.getPaymentStatus(a.paymentId)).toBe('paid');
+    cfg.cancelReturns = 'cancelled';
+    const b = await api.createPayment(input);
+    expect(await api.cancelPayment(b.paymentId)).toBe('cancelled');
+    expect(await api.getPaymentStatus(b.paymentId)).toBe('cancelled');
+  });
+
+  it('refuses payments in free mode', async () => {
+    const { api } = setup({ settings: { freeMode: true } });
+    await expect(api.createPayment(input)).rejects.toThrow('free_mode');
+  });
+
+  it('fails the next N uploads, then succeeds', async () => {
+    const { api, cfg } = setup({ failUploads: 1 });
+    await expect(api.uploadPhoto('s1', new ArrayBuffer(1))).rejects.toThrow();
+    expect(cfg.failUploads).toBe(0);
+    expect(await api.uploadPhoto('s1', new ArrayBuffer(1))).toBe('s1.jpg');
+  });
+});
