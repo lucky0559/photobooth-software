@@ -1,22 +1,22 @@
-import { DELIVERY_TIMEOUT_MS, PAYMENT_TIMEOUT_MS, type KioskState, type Template } from '@pb/core';
-import { useEffect, useRef, useState } from 'react';
+import { PAYMENT_TIMEOUT_MS } from '@pb/core';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { KioskApi } from './api/kiosk-api';
-import { buildSessionSheet } from './compose/session-sheet';
-import { recordSheet } from './debug/last-sheet';
 import { Attract } from './screens/Attract';
 import { Capture } from './screens/Capture';
+import { Delivery } from './screens/Delivery';
+import { Output } from './screens/Output';
 import { PinPrompt } from './screens/PinPrompt';
 import { Review } from './screens/Review';
 import { Setup, type SetupAuth } from './screens/Setup';
 import { registerTap } from './setup/secret-tap';
 import { attractStatus } from './state/settings-sync';
 import { useKiosk } from './state/useKiosk';
+import { QUEUE_INTERVAL_MS, startQueueRunner, type QueueRunner } from './sync/queue';
 import { Backdrop } from './theme/components/Backdrop';
 import { BannerTitle } from './theme/components/BannerTitle';
 import { FramedCard } from './theme/components/FramedCard';
 import { TimerPill } from './theme/components/TimerPill';
 import { FlashBolt } from './theme/decor/FlashBolt';
-import { ShutterIris } from './theme/decor/ShutterIris';
 import { Sparkle } from './theme/decor/Sparkle';
 import { Sprocket } from './theme/decor/Sprocket';
 import { useRemainingMs } from './theme/time';
@@ -27,6 +27,20 @@ export function App({ api, auth }: { api: KioskApi; auth: SetupAuth | null }) {
   const [screen, setScreen] = useState<Screen>('loading');
   const [cameraId, setCameraId] = useState<string | null>(null);
   const taps = useRef<number[]>([]);
+  const queue = useRef<QueueRunner | null>(null);
+
+  // Offline sync: runs every 10 s and after each enqueue, in every screen (jobs survive restarts in queue.json).
+  useEffect(() => {
+    const intervalMs =
+      import.meta.env.VITE_FAKE_API === '1' ? (window.__pbFake?.queueIntervalMs ?? QUEUE_INTERVAL_MS) : QUEUE_INTERVAL_MS;
+    const runner = startQueueRunner(api, window.kiosk, intervalMs);
+    queue.current = runner;
+    return () => {
+      runner.stop();
+      queue.current = null;
+    };
+  }, [api]);
+  const kickQueue = useCallback(() => queue.current?.kick(), []);
 
   const reload = (): void => {
     void window.kiosk.getConfig().then((cfg) => {
@@ -46,14 +60,26 @@ export function App({ api, auth }: { api: KioskApi; auth: SetupAuth | null }) {
     <>
       {screen === 'setup' && <Setup auth={auth} initialCameraId={cameraId} onDone={reload} />}
       {screen === 'pin' && <PinPrompt onUnlock={() => setScreen('setup')} onCancel={() => setScreen('kiosk')} />}
-      {screen === 'kiosk' && <KioskFlow api={api} cameraId={cameraId} onSecretTap={onSecretTap} />}
+      {screen === 'kiosk' && (
+        <KioskFlow api={api} cameraId={cameraId} onSecretTap={onSecretTap} onEnqueued={kickQueue} />
+      )}
     </>
   );
 }
 
 /** Guest flow driven by the session state machine. */
-function KioskFlow({ api, cameraId, onSecretTap }: { api: KioskApi; cameraId: string | null; onSecretTap: () => void }) {
-  const { state, settings, dispatch, template, online, ready } = useKiosk(api);
+function KioskFlow({
+  api,
+  cameraId,
+  onSecretTap,
+  onEnqueued,
+}: {
+  api: KioskApi;
+  cameraId: string | null;
+  onSecretTap: () => void;
+  onEnqueued: () => void;
+}) {
+  const { state, settings, dispatch, template, online, ready, downloadToken, sessionCreatedAt } = useKiosk(api);
 
   switch (state.name) {
     case 'attract':
@@ -68,7 +94,7 @@ function KioskFlow({ api, cameraId, onSecretTap }: { api: KioskApi; cameraId: st
       );
     case 'capture':
       return <Capture state={state} settings={settings} cameraId={cameraId} dispatch={dispatch} />;
-    // Placeholders: Payment, Output and Delivery screens arrive in later tasks.
+    // Placeholder: the Payment screen arrives in Task 11.
     case 'payment':
       return <QrPlaceholder title="Payment" deadline={state.startedAt + PAYMENT_TIMEOUT_MS} />;
     case 'review':
@@ -81,15 +107,25 @@ function KioskFlow({ api, cameraId, onSecretTap }: { api: KioskApi; cameraId: st
         </main>
       );
     case 'output':
-      return <OutputPlaceholder state={state} template={template} />;
+      return (
+        <Output
+          state={state}
+          template={template}
+          settings={settings}
+          downloadToken={downloadToken}
+          createdAt={sessionCreatedAt}
+          dispatch={dispatch}
+          onEnqueued={onEnqueued}
+        />
+      );
     case 'delivery':
-      return <QrPlaceholder title="Scan to download your photo" deadline={state.enteredAt + DELIVERY_TIMEOUT_MS} />;
+      return <Delivery state={state} downloadToken={downloadToken} dispatch={dispatch} />;
   }
 }
 
 /**
- * Themed shell for the payment and delivery screens: striped backdrop, timer pill, title and a taped polaroid
- * card with an empty QR slot. Tasks 10–11 put the real QR and copy into `.qr-slot`.
+ * Themed shell for the payment screen: striped backdrop, timer pill, title and a taped polaroid card with an
+ * empty QR slot. Task 11 puts the real QR and copy into `.qr-slot`.
  */
 function QrPlaceholder({ title, deadline }: { title: string; deadline: number }) {
   const remainingMs = useRemainingMs(deadline);
@@ -109,32 +145,6 @@ function QrPlaceholder({ title, deadline }: { title: string; deadline: number })
       <div className="decor-row">
         <Sprocket size="11vmin" className="decor--spin" />
         <FlashBolt size="8vmin" fill="var(--tangerine)" wobble />
-      </div>
-    </main>
-  );
-}
-
-/** Composes the print sheet once on entry. Printing and upload replace this in Tasks 9–10. */
-function OutputPlaceholder({ state, template }: { state: Extract<KioskState, { name: 'output' }>; template: Template | null }) {
-  const started = useRef(false);
-  useEffect(() => {
-    if (started.current || !template) return;
-    started.current = true;
-    buildSessionSheet({ template, shotIds: state.shots, filter: state.filter }).then(
-      (sheet) => {
-        if (import.meta.env.VITE_FAKE_API === '1') recordSheet(sheet);
-      },
-      (err: unknown) => console.error('Composing print sheet failed', err),
-    );
-  }, [state, template]);
-  return (
-    <main className="stage stage--dark output">
-      <Backdrop kind="darkroom" />
-      <div className="stage__center">
-        <ShutterIris size="34vmin" className="decor--spin" />
-        <BannerTitle tone="lime" tilt={2}>
-          Printing your photo…
-        </BannerTitle>
       </div>
     </main>
   );

@@ -16,6 +16,8 @@ declare global {
     __pbPrintCalls?: () => Promise<number>;
     __pbDebug?: {
       printCalls(): Promise<number>;
+      /** Number of jobs in the persisted sync queue. */
+      queueLength(): Promise<number>;
       shotCount(): number;
       killCamera(): void;
       lastSheet(): Promise<{ width: number; height: number; type: string } | null>;

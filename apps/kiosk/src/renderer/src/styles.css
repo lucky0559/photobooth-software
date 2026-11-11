@@ -243,7 +243,8 @@ body,
   background: #fff;
 }
 
-.stage.capture-error {
+.stage.capture-error,
+.stage.output-error {
   justify-content: center;
 }
 
@@ -446,6 +447,59 @@ body,
   aspect-ratio: 1;
   border: 3px dashed rgb(15 27 61 / 0.35);
   border-radius: 6px;
+}
+
+.qr-img {
+  display: block;
+  width: min(52vmin, 32vh);
+  aspect-ratio: 1;
+  image-rendering: pixelated;
+}
+
+/* Delivery */
+
+/* Portrait: QR card, then the note and Done below it. Landscape: note and Done beside the card. */
+.delivery__body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--gap);
+}
+
+.delivery__side {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--gap);
+}
+
+@media (orientation: landscape) {
+  .delivery__body {
+    flex-direction: row;
+    gap: calc(var(--gap) * 2);
+  }
+
+  .delivery__side {
+    max-width: min(40vw, 760px);
+  }
+}
+
+.delivery .qr-img {
+  width: min(52vmin, 28vh);
+}
+
+.delivery__print-error {
+  margin: 0;
+  max-width: min(90vw, 900px);
+  padding: calc(var(--gap) * 0.6) var(--gap);
+  border: 3px solid var(--ink);
+  border-radius: 12px;
+  background: var(--tangerine);
+  color: var(--ink);
+  font-weight: 700;
+  font-size: clamp(24px, 3vmin, 44px);
+  line-height: 1.25;
+  text-align: center;
 }
 
 /* Output */

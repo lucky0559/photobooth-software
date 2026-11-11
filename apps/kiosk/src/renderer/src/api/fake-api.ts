@@ -9,6 +9,10 @@ export interface FakeConfig {
   cancelReturns: 'cancelled' | 'paid';
   /** The next N `uploadPhoto` calls reject. */
   failUploads: number;
+  /** The next N print-sheet compositions on the Output screen reject (R13 error path). */
+  failCompose?: number;
+  /** Sync queue loop interval in ms, read once at startup (default: production 10 s). Backoff is unchanged. */
+  queueIntervalMs?: number;
 }
 
 declare global {

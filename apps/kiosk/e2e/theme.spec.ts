@@ -160,11 +160,19 @@ for (const vp of VIEWPORTS) {
     await expectDecorClear(page);
     await snap(page, `review-${vp.name}`);
 
-    // Output placeholder (printing arrives in Task 9).
+    // Output (brief with the fake printer), then Delivery.
     await print.click();
     await expect(page.getByText('Printing your photo…')).toBeVisible();
     await expectNoScroll(page);
     await snap(page, `output-${vp.name}`);
+
+    await expect(page.getByRole('heading', { name: 'Scan to download your photo' })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole('img', { name: 'QR code to download your photo' })).toBeVisible();
+    await expectInsideViewport(page, page.getByRole('img', { name: 'QR code to download your photo' }));
+    await expectInsideViewport(page, page.getByRole('button', { name: 'Done' }));
+    await expectNoScroll(page);
+    await expectDecorClear(page);
+    await snap(page, `delivery-${vp.name}`);
   });
 }
 

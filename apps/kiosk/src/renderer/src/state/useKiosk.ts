@@ -22,6 +22,8 @@ export interface Kiosk {
   settings: KioskSettings;
   dispatch(e: KioskInput): void;
   downloadToken: string | null;
+  /** ISO time the current session started (on START); null in attract. */
+  sessionCreatedAt: string | null;
   template: Template | null;
   /** `navigator.onLine` and the last settings fetch succeeded. */
   online: boolean;
@@ -37,6 +39,7 @@ export function useKiosk(api: SyncApi, bridge: SyncBridge = window.kiosk): Kiosk
 
   const settings = sync?.settings ?? DEFAULT_SETTINGS;
   const stateRef = useRef(state);
+  const createdAtRef = useRef<string | null>(null);
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
 
@@ -50,8 +53,12 @@ export function useKiosk(api: SyncApi, bridge: SyncBridge = window.kiosk): Kiosk
     setState(next);
     if (event.type === 'START') {
       shotStore.clear();
+      createdAtRef.current = new Date(event.now).toISOString();
       setDownloadToken(newDownloadToken());
     } else if (next.name === 'attract') {
+      // Shots are kept through Output and Delivery (so a failed output can be retried) and dropped here.
+      shotStore.clear();
+      createdAtRef.current = null;
       setDownloadToken(null);
     }
   }, []);
@@ -95,6 +102,7 @@ export function useKiosk(api: SyncApi, bridge: SyncBridge = window.kiosk): Kiosk
     settings,
     dispatch,
     downloadToken,
+    sessionCreatedAt: createdAtRef.current,
     template: sync?.template ?? null,
     online: navOnline && !(sync?.settingsFetchFailed ?? false),
     ready: sync !== null,
