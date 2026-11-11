@@ -11,5 +11,7 @@ declare global {
 
   interface Window {
     kiosk: KioskBridge;
+    /** e2e-only helpers, installed only when `VITE_FAKE_API=1`. */
+    __pbDebug?: { shotCount(): number; killCamera(): void };
   }
 }
