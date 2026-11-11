@@ -1,4 +1,5 @@
 import type { KioskSettings, Template } from '@pb/core';
+import type { QueueJob, QueueResult } from './queue';
 
 export type PrintResult = { ok: true } | { ok: false; reason: string };
 
@@ -33,6 +34,15 @@ export interface KioskBridge {
   listPrinters(): Promise<string[]>;
   /** Builds the 4x6 test page and prints it on the configured printer. */
   printTestPage(): Promise<PrintResult>;
+  /** Writes `<userData>/photos/<sessionId>.jpg` and resolves to its path. `sessionId` must be a UUID. */
+  savePhoto(sessionId: string, jpeg: ArrayBuffer): Promise<string>;
+  /** Reads a photo saved by `savePhoto`; any path outside `<userData>/photos/` is rejected. */
+  readPhoto(path: string): Promise<ArrayBuffer>;
+  /** Persists new sync jobs (attempts and backoff are reset by the main process). */
+  queueAdd(jobs: QueueJob[]): Promise<void>;
+  queueList(): Promise<QueueJob[]>;
+  /** Removes done jobs and records failures (attempts + 1, next attempt time, last error). */
+  queueApply(result: QueueResult): Promise<void>;
 }
 
 export const IPC = {
@@ -45,6 +55,11 @@ export const IPC = {
   print: 'print:send',
   listPrinters: 'print:list',
   debugPrintCalls: 'print:debug-calls',
+  savePhoto: 'photo:save',
+  readPhoto: 'photo:read',
+  queueAdd: 'queue:add',
+  queueList: 'queue:list',
+  queueApply: 'queue:apply',
 } as const;
 
 export const PIN_PATTERN = /^\d{4,8}$/;

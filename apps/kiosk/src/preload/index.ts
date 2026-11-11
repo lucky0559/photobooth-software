@@ -13,6 +13,11 @@ const bridge: KioskBridge = {
   listPrinters: () => ipcRenderer.invoke(IPC.listPrinters),
   // The page is built here and goes through the same validated `print` IPC path.
   printTestPage: async () => ipcRenderer.invoke(IPC.print, await buildTestPageJpeg(), 1),
+  savePhoto: (sessionId, jpeg) => ipcRenderer.invoke(IPC.savePhoto, sessionId, jpeg),
+  readPhoto: (path) => ipcRenderer.invoke(IPC.readPhoto, path),
+  queueAdd: (jobs) => ipcRenderer.invoke(IPC.queueAdd, jobs),
+  queueList: () => ipcRenderer.invoke(IPC.queueList),
+  queueApply: (result) => ipcRenderer.invoke(IPC.queueApply, result),
 };
 
 contextBridge.exposeInMainWorld('kiosk', bridge);

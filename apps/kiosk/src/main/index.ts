@@ -1,8 +1,25 @@
 import { app, BrowserWindow, Menu } from 'electron';
+import { rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { DEFAULT_LOCAL_CONFIG, type LocalConfig } from '../shared/bridge';
 import { registerIpc } from './ipc';
-import { createJsonStore } from './json-store';
+import { createJsonStore, type JsonStore } from './json-store';
+import { resolvePhotoReadPath, selectPhotosToDelete } from './photos';
+import { EMPTY_QUEUE, type QueueFile } from './queue-store';
+
+/** Deletes local photos whose upload finished 7+ days ago (run once on app start). */
+function deleteExpiredPhotos(queue: JsonStore<QueueFile>, photosDir: string, now: number): void {
+  const expired = new Set(selectPhotosToDelete(now, queue.get().completedUploads));
+  if (expired.size === 0) return;
+  for (const u of expired) {
+    try {
+      rmSync(resolvePhotoReadPath(photosDir, u.filePath), { force: true });
+    } catch (err) {
+      console.error('Deleting old photo failed', err);
+    }
+  }
+  queue.update((q) => ({ ...q, completedUploads: q.completedUploads.filter((u) => !expired.has(u)) }));
+}
 
 // Must run before anything reads userData (tests point this at a temp dir).
 if (process.env.PB_USER_DATA) app.setPath('userData', process.env.PB_USER_DATA);
@@ -43,7 +60,10 @@ void app.whenReady().then(() => {
   if (app.isPackaged) Menu.setApplicationMenu(null);
   const userData = app.getPath('userData');
   const store = createJsonStore<LocalConfig>(join(userData, 'config.json'), DEFAULT_LOCAL_CONFIG);
-  registerIpc(store, join(userData, 'overlays'));
+  const photosDir = join(userData, 'photos');
+  const queue = createJsonStore<QueueFile>(join(userData, 'queue.json'), EMPTY_QUEUE);
+  deleteExpiredPhotos(queue, photosDir, Date.now());
+  registerIpc(store, join(userData, 'overlays'), photosDir, queue);
   createWindow();
 });
 

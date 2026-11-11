@@ -1,8 +1,10 @@
 import { ipcMain } from 'electron';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { IPC, PIN_PATTERN, TEMPLATE_ID_PATTERN, type LocalConfig } from '../shared/bridge';
 import type { JsonStore } from './json-store';
+import { photoPath, resolvePhotoReadPath, validateJpeg } from './photos';
+import { addJobs, applyResult, validateQueueJobs, validateQueueResult, type QueueFile } from './queue-store';
 import { listPrinters, printSheet, validatePrintRequest } from './print';
 import { hashPin, verifyPin } from './pin';
 
@@ -17,8 +19,14 @@ function toArrayBuffer(buf: Buffer): ArrayBuffer {
   return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer;
 }
 
-export function registerIpc(store: JsonStore<LocalConfig>, overlayDir: string): void {
+export function registerIpc(
+  store: JsonStore<LocalConfig>,
+  overlayDir: string,
+  photosDir: string,
+  queue: JsonStore<QueueFile>,
+): void {
   mkdirSync(overlayDir, { recursive: true });
+  mkdirSync(photosDir, { recursive: true });
 
   ipcMain.handle(IPC.getConfig, () => store.get());
 
@@ -50,7 +58,9 @@ export function registerIpc(store: JsonStore<LocalConfig>, overlayDir: string): 
     const bytes = validatePrintRequest(jpeg, copies);
     if (fakePrint) {
       fakePrintCalls += 1;
-      return { ok: true };
+      // PB_FAKE_PRINT_FAIL=<reason> (e2e) simulates a printer failure.
+      const failReason = process.env.PB_FAKE_PRINT_FAIL;
+      return failReason ? { ok: false, reason: failReason } : { ok: true };
     }
     return printSheet(bytes, copies as number, store.get().printerName);
   });
@@ -58,6 +68,29 @@ export function registerIpc(store: JsonStore<LocalConfig>, overlayDir: string): 
   ipcMain.handle(IPC.listPrinters, (e) => (fakePrint ? ['Fake Printer'] : listPrinters(e.sender)));
 
   if (fakePrint) ipcMain.handle(IPC.debugPrintCalls, () => fakePrintCalls);
+
+  ipcMain.handle(IPC.savePhoto, (_e, sessionId: unknown, jpeg: unknown) => {
+    const file = photoPath(photosDir, sessionId);
+    const bytes = validateJpeg(jpeg);
+    const tmp = `${file}.tmp`;
+    writeFileSync(tmp, bytes);
+    renameSync(tmp, file);
+    return file;
+  });
+
+  ipcMain.handle(IPC.readPhoto, (_e, path: unknown) => toArrayBuffer(readFileSync(resolvePhotoReadPath(photosDir, path))));
+
+  ipcMain.handle(IPC.queueAdd, (_e, jobs: unknown) => {
+    const valid = validateQueueJobs(jobs, photosDir);
+    queue.update((q) => addJobs(q, valid));
+  });
+
+  ipcMain.handle(IPC.queueList, () => queue.get().jobs);
+
+  ipcMain.handle(IPC.queueApply, (_e, result: unknown) => {
+    const valid = validateQueueResult(result);
+    queue.update((q) => applyResult(q, valid, Date.now()));
+  });
 
   ipcMain.handle(IPC.readOverlay, (_e, templateId: unknown) => {
     try {

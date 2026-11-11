@@ -39,6 +39,11 @@ export function validatePrintRequest(jpeg: unknown, copies: unknown): Buffer {
   if (typeof copies !== 'number' || !Number.isInteger(copies) || copies < 1 || copies > 4) {
     throw new Error('copies must be an integer from 1 to 4');
   }
+  return validateJpegBytes(jpeg);
+}
+
+/** Untrusted IPC input must be a non-empty JPEG (FF D8 FF) ArrayBuffer/Uint8Array of at most 20 MB. */
+export function validateJpegBytes(jpeg: unknown): Buffer {
   let bytes: Uint8Array;
   if (jpeg instanceof ArrayBuffer) bytes = new Uint8Array(jpeg);
   else if (jpeg instanceof Uint8Array) bytes = jpeg;
