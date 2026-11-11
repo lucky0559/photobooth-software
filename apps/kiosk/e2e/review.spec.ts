@@ -34,6 +34,7 @@ async function toReview(): Promise<Page> {
     env: {
       ...process.env,
       PB_FAKE_CAMERA: '1',
+      PB_FAKE_PRINT: '1',
       PB_USER_DATA: userData,
       PB_FAKE_CONFIG: JSON.stringify({ settings: { freeMode: true, countdownSeconds: 3, shotsPerSession: 2 } }),
     },

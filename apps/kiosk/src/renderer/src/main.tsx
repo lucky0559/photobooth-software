@@ -36,6 +36,7 @@ if (import.meta.env.VITE_FAKE_API === '1') {
     killCamera: simulateCameraLoss,
     lastSheet: lastSheetInfo,
     lastSheetPixel,
+    printCalls: () => (window.__pbPrintCalls ? window.__pbPrintCalls() : Promise.resolve(0)),
   };
 }
 

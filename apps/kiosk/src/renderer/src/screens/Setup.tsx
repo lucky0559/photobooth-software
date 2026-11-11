@@ -36,12 +36,20 @@ export function Setup({
   const [password, setPassword] = useState('');
   const [cameras, setCameras] = useState<MediaDeviceInfo[]>([]);
   const [cameraId, setCameraId] = useState(initialCameraId ?? '');
+  const [printers, setPrinters] = useState<string[]>([]);
+  const [printerName, setPrinterName] = useState('');
+  const [testResult, setTestResult] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     if (step !== 'devices') return;
     let live = true;
+    void Promise.all([window.kiosk.listPrinters(), window.kiosk.getConfig()]).then(([list, cfg]) => {
+      if (!live) return;
+      setPrinters(list);
+      setPrinterName(cfg.printerName && list.includes(cfg.printerName) ? cfg.printerName : '');
+    });
     void listCameras().then((list) => {
       if (!live) return;
       setCameras(list);
@@ -92,8 +100,18 @@ export function Setup({
     }
     void run(async () => {
       await window.kiosk.setPin(pin);
-      await window.kiosk.setConfig({ cameraDeviceId: cameraId });
+      await window.kiosk.setConfig({ cameraDeviceId: cameraId, printerName: printerName || null });
       onDone();
+    });
+  };
+
+  const testPrint = (): void => {
+    setTestResult(null);
+    void run(async () => {
+      // `printTestPage` prints on the persisted printer, so save the selection first.
+      await window.kiosk.setConfig({ printerName: printerName || null });
+      const res = await window.kiosk.printTestPage();
+      setTestResult(res.ok ? 'Test page sent' : `Test print failed: ${res.reason}`);
     });
   };
 
@@ -150,6 +168,21 @@ export function Setup({
               ))}
             </select>
           </label>
+          <label>
+            Printer
+            <select value={printerName} onChange={(e) => setPrinterName(e.target.value)}>
+              <option value="">{printers.length === 0 ? 'No printers found' : 'System default'}</option>
+              {printers.map((p) => (
+                <option key={p} value={p}>
+                  {p}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button type="button" onClick={testPrint} disabled={busy}>
+            Print test page
+          </button>
+          {testResult && <p role="status">{testResult}</p>}
           <button type="submit" disabled={busy}>
             Done
           </button>

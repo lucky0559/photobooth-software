@@ -1,5 +1,7 @@
 import type { KioskSettings, Template } from '@pb/core';
 
+export type PrintResult = { ok: true } | { ok: false; reason: string };
+
 /** Device-local configuration, persisted by the main process in `<userData>/config.json`. */
 export interface LocalConfig {
   pinHash: string | null;
@@ -26,6 +28,11 @@ export interface KioskBridge {
   checkPin(pin: string): Promise<boolean>;
   saveOverlay(templateId: string, png: ArrayBuffer): Promise<void>;
   readOverlay(templateId: string): Promise<ArrayBuffer | null>;
+  /** Prints a 1200x1800 JPEG on the configured printer. Never rejects for printer failures. */
+  print(jpeg: ArrayBuffer, copies: number): Promise<PrintResult>;
+  listPrinters(): Promise<string[]>;
+  /** Builds the 4x6 test page and prints it on the configured printer. */
+  printTestPage(): Promise<PrintResult>;
 }
 
 export const IPC = {
@@ -35,6 +42,9 @@ export const IPC = {
   checkPin: 'pin:check',
   saveOverlay: 'overlay:save',
   readOverlay: 'overlay:read',
+  print: 'print:send',
+  listPrinters: 'print:list',
+  debugPrintCalls: 'print:debug-calls',
 } as const;
 
 export const PIN_PATTERN = /^\d{4,8}$/;

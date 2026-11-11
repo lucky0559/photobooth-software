@@ -3,6 +3,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { IPC, PIN_PATTERN, TEMPLATE_ID_PATTERN, type LocalConfig } from '../shared/bridge';
 import type { JsonStore } from './json-store';
+import { listPrinters, printSheet, validatePrintRequest } from './print';
 import { hashPin, verifyPin } from './pin';
 
 function overlayFile(overlayDir: string, templateId: unknown): string {
@@ -40,6 +41,23 @@ export function registerIpc(store: JsonStore<LocalConfig>, overlayDir: string): 
   ipcMain.handle(IPC.saveOverlay, (_e, templateId: unknown, png: ArrayBuffer) => {
     writeFileSync(overlayFile(overlayDir, templateId), Buffer.from(png));
   });
+
+  // PB_FAKE_PRINT=1 (e2e): never touch a real printer; just count the calls.
+  const fakePrint = process.env.PB_FAKE_PRINT === '1';
+  let fakePrintCalls = 0;
+
+  ipcMain.handle(IPC.print, async (_e, jpeg: unknown, copies: unknown) => {
+    const bytes = validatePrintRequest(jpeg, copies);
+    if (fakePrint) {
+      fakePrintCalls += 1;
+      return { ok: true };
+    }
+    return printSheet(bytes, copies as number, store.get().printerName);
+  });
+
+  ipcMain.handle(IPC.listPrinters, () => (fakePrint ? ['Fake Printer'] : listPrinters()));
+
+  if (fakePrint) ipcMain.handle(IPC.debugPrintCalls, () => fakePrintCalls);
 
   ipcMain.handle(IPC.readOverlay, (_e, templateId: unknown) => {
     try {

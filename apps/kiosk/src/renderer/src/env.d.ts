@@ -12,7 +12,10 @@ declare global {
   interface Window {
     kiosk: KioskBridge;
     /** e2e-only helpers, installed only when `VITE_FAKE_API=1`. */
+    /** Set by the preload only when PB_FAKE_PRINT=1. */
+    __pbPrintCalls?: () => Promise<number>;
     __pbDebug?: {
+      printCalls(): Promise<number>;
       shotCount(): number;
       killCamera(): void;
       lastSheet(): Promise<{ width: number; height: number; type: string } | null>;

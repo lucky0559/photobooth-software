@@ -36,6 +36,7 @@ async function launch(viewport: { width: number; height: number }, settings = { 
     env: {
       ...process.env,
       PB_FAKE_CAMERA: '1',
+      PB_FAKE_PRINT: '1',
       PB_USER_DATA: userData,
       PB_FAKE_CONFIG: JSON.stringify({ settings: { ...settings, countdownSeconds: 3, shotsPerSession: 2 } }),
     },
