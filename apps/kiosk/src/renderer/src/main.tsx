@@ -9,6 +9,12 @@ import { simulateCameraLoss } from './camera/camera';
 import { shotStore } from './camera/shot-store';
 import { lastSheetInfo, lastSheetPixel } from './debug/last-sheet';
 import type { SetupAuth } from './screens/Setup';
+// Fonts are bundled from @fontsource: the kiosk may be offline, so no runtime font requests.
+import '@fontsource/bungee/400.css';
+import '@fontsource/outfit/600.css';
+import '@fontsource/outfit/700.css';
+import './theme/tokens.css';
+import './theme/theme.css';
 import './styles.css';
 
 function createApi(): { api: KioskApi; auth: SetupAuth | null } {

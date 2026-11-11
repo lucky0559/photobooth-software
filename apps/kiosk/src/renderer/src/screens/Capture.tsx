@@ -4,6 +4,13 @@ import { captureFrame, closeCamera, openCamera } from '../camera/camera';
 import { shotStore } from '../camera/shot-store';
 import { watchFirstFrame, watchMute } from '../camera/watchdog';
 import type { KioskInput } from '../state/useKiosk';
+import { ActionButton } from '../theme/components/ActionButton';
+import { Backdrop } from '../theme/components/Backdrop';
+import { BannerTitle } from '../theme/components/BannerTitle';
+import { FramedCard } from '../theme/components/FramedCard';
+import { FlashBolt } from '../theme/decor/FlashBolt';
+import { ShutterIris } from '../theme/decor/ShutterIris';
+import { Sparkle } from '../theme/decor/Sparkle';
 
 const FLASH_MS = 150;
 const PAUSE_MS = 1500;
@@ -120,22 +127,49 @@ export function Capture({
 
   if (failed) {
     return (
-      <main className="screen capture-error">
-        <h1>Camera not available. Please call staff.</h1>
-        <button type="button" className="primary" onClick={() => dispatch({ type: 'CAMERA_RETRY' })}>
-          Try again
-        </button>
+      <main className="stage stage--dark capture-error">
+        <Backdrop kind="darkroom" />
+        <FramedCard className="message-card">
+          <h1>Camera not available. Please call staff.</h1>
+          <ActionButton onClick={() => dispatch({ type: 'CAMERA_RETRY' })}>Try again</ActionButton>
+        </FramedCard>
       </main>
     );
   }
 
   return (
-    <main className="capture">
-      <video ref={videoRef} className="preview" autoPlay muted playsInline />
+    <main className="stage stage--dark capture">
+      <Backdrop kind="darkroom" />
+      <div className="title-row">
+        <FlashBolt size="8vmin" wobble />
+        <BannerTitle tone="lime" tilt={-2} as="p">
+          Say cheese!
+        </BannerTitle>
+        <Sparkle size="7vmin" wobble />
+      </div>
       <p className="shot-label">
         Shot {Math.min(state.shots.length + 1, total)} of {total}
       </p>
-      {count !== null && <div className="countdown">{count}</div>}
+      {/* Viewfinder: aqua-outlined window with crop-mark corner brackets around it. */}
+      <div className="camera-frame">
+        <span className="camera-frame__mark camera-frame__mark--tl" aria-hidden="true" />
+        <span className="camera-frame__mark camera-frame__mark--tr" aria-hidden="true" />
+        <span className="camera-frame__mark camera-frame__mark--bl" aria-hidden="true" />
+        <span className="camera-frame__mark camera-frame__mark--br" aria-hidden="true" />
+        <div className="camera-window">
+          <video ref={videoRef} className="preview" autoPlay muted playsInline />
+          {count !== null && (
+            <div className="countdown" aria-live="off">
+              <span className="countdown__iris" style={{ rotate: `${count * 40}deg` }}>
+                <ShutterIris size="100%" blade="var(--ink)" />
+              </span>
+              <span key={count} className="countdown__num">
+                {count}
+              </span>
+            </div>
+          )}
+        </div>
+      </div>
       {flash && <div className="flash" />}
     </main>
   );

@@ -27,7 +27,7 @@
 - PayMongo secret key and webhook secret live only in Supabase Edge Function secrets.
 - Guest-facing copy is English and must match the strings quoted in this plan.
 - Commits: conventional commit subjects, no AI attribution trailers.
-- Kiosk visual style follows `docs/DESIGN.md` (retro sticker theme). Tasks 9–11 build their screens from the Task 8b theme components; pinned guest copy stays exactly as written in this plan.
+- Kiosk visual style follows `docs/DESIGN.md` ("Pop Film Lab" theme). Tasks 9–11 build their screens from the Task 8b theme components; pinned guest copy stays exactly as written in this plan.
 - Testing phase uses free tiers only (see `docs/ENVIRONMENTS.md`): local Supabase via Docker for development and tests, Supabase Free + Vercel Hobby for the shared test deployment, PayMongo test keys. No task may require a paid service.
 
 ## Review Focus
@@ -748,30 +748,30 @@ git commit -m "feat(kiosk): compose print sheet with filters and review screen"
 
 ### Task 8b: Kiosk visual theme
 
-**Estimate:** 12h (added after the client shared a design reference; see `docs/DESIGN.md`, which is the spec for this task)
+**Estimate:** 12h (added after the client asked for a playful kiosk look; the client wants the *idea* of their reference, not a copy, so the identity is our own "Pop Film Lab" design; `docs/DESIGN.md` is the spec for this task)
 
 **Files:**
-- Create: `apps/kiosk/src/renderer/src/theme/{tokens.css,theme.css}`
-- Create: `apps/kiosk/src/renderer/src/theme/components/{StickerTitle,PillButton,TimerPill,CheckerBackdrop,FramedCard}.tsx`
-- Create: `apps/kiosk/src/renderer/src/theme/decor/{StarBurst,Daisy,Smiley,CloudRainbow,GoodVibesTag}.tsx` (inline SVG, original artwork)
-- Create: `apps/kiosk/src/renderer/src/theme/contrast.ts`
-- Modify: `screens/{Attract,Capture,Review}.tsx`, the placeholders for `payment`/`output`/`delivery` in `App.tsx`, `styles.css`, `package.json` (`@fontsource/lilita-one`, `@fontsource/nunito`)
-- Test: `apps/kiosk/test/contrast.test.ts`, `apps/kiosk/e2e/theme.spec.ts`
+- Create: `apps/kiosk/src/renderer/src/theme/{tokens.css,theme.css,contrast.ts,time.ts}`
+- Create: `apps/kiosk/src/renderer/src/theme/components/{BannerTitle,ActionButton,TimerPill,Backdrop,FramedCard}.tsx`
+- Create: `apps/kiosk/src/renderer/src/theme/decor/{DecorSvg,FilmStrip,Sprocket,ShutterIris,FlashBolt,Sparkle,TapeStrip,HalftoneField}.tsx` (inline SVG, original artwork)
+- Modify: `screens/{Attract,Capture,Review}.tsx`, the placeholders for `payment`/`output`/`delivery` in `App.tsx`, `main.tsx` (font imports), `styles.css`, `package.json` (`@fontsource/bungee`, `@fontsource/outfit`)
+- Test: `apps/kiosk/test/{contrast,time}.test.ts`, `apps/kiosk/e2e/theme.spec.ts`
 
 **Interfaces:**
 - Consumes: all existing screens and their pinned copy; `FILTERS`, `composeLayout` (Task 8)
 - Produces (later tasks 9–11 must build their screens from these, not with ad-hoc CSS):
-  - `contrastRatio(fg: string, bg: string): number` (WCAG relative-luminance formula, `#rrggbb` inputs) and the exported `TOKEN_PAIRS: { fg: string; bg: string; name: string }[]` listing every text-on-fill pair the theme uses
-  - `<PillButton variant="primary" | "secondary" | "danger" onClick disabled>` (min height 96 px, pressed state, focus ring)
-  - `<StickerTitle tone="coral" | "mint" | "grape" tilt={number}>` banner
-  - `<TimerPill remainingMs={number} />` formats `m:ss`; display-only
-  - `<CheckerBackdrop kind="welcome" | "blue" | "sun">` full-screen background
-  - `<FramedCard>` outlined cream card with offset shadow
+  - `contrastRatio(fg: string, bg: string): number` (WCAG relative-luminance formula, `#rrggbb` inputs), `TOKENS` (mirrors `tokens.css`) and the exported `TOKEN_PAIRS: { fg: string; bg: string; name: string }[]` listing every text-on-fill pair the theme uses
+  - `<ActionButton variant="primary" | "secondary" | "danger" onClick disabled>` (lime / aqua / tangerine with ink text; min height 96 px, slab shadow, pressed state, focus ring)
+  - `<BannerTitle tone="tangerine" | "lime" | "aqua" | "ink" tilt={number} as?="h1" | "h2" | "p">` banner heading
+  - `<TimerPill remainingMs={number} />` formats `m:ss`; display-only; pair with `useRemainingMs(deadline)` from `theme/time.ts`
+  - `<Backdrop kind="film" | "darkroom" | "paper" | "stripes">` full-screen background (Attract / Capture+Output / Review / Payment+Delivery)
+  - `<FramedCard polaroid?>` outlined paper card with slab shadow; `polaroid` adds the deep bottom margin, tilt and tape strip
+  - Layout helpers in `theme.css`: `.stage` (+ `.stage--dark`), `.topbar`, `.title-row`, `.decor-row`, `.stage__center`
 
 - [ ] **Step 1: Write the failing tests**
 
 `contrast.test.ts`: `contrastRatio('#000000', '#ffffff')` is 21; every pair in `TOKEN_PAIRS` has ratio ≥ 4.5 (this is the real check on the palette; if a pair fails, adjust the token, not the threshold).
-`theme.spec.ts` (Playwright `_electron`, fake API, strings as pinned): at viewport 1080 × 1920 and again at 1920 × 1080, for Attract, Capture and Review: the primary button's bounding box lies fully inside the viewport; `document.documentElement.scrollWidth <= innerWidth` and `scrollHeight <= innerHeight`; the pinned copy still matches (`Tap to start`, `Pick a look`, `Original`, `Black & White`, `Warm`, `Print`); `Welcome!` is present on Attract; the Review page has no `Retake` text. Save one screenshot per screen and viewport to `test-results/theme/` (not asserted).
+`theme.spec.ts` (Playwright `_electron`, fake API, strings as pinned): at viewport 1080 × 1920 and again at 1920 × 1080, for Attract, Capture and Review: the primary button's bounding box lies fully inside the viewport; `document.documentElement.scrollWidth <= innerWidth` and `scrollHeight <= innerHeight`; the pinned copy still matches (`Tap to start`, `Pick a look`, `Original`, `Black & White`, `Warm`, `Print`); the decorative banners `Smile!` (Attract) and `Say cheese!` (Capture) are present; the Review page has no `Retake` text; foreground decor is `aria-hidden`, has no pointer events and never overlaps a button or the camera frame; the paid flow's payment shell shows a timer pill reading `3:00`/`2:5x`; with `prefers-reduced-motion` the wobble and start-button pulse animations are off. Save one screenshot per screen and viewport to `test-results/theme/` (not asserted) and inspect them.
 
 - [ ] **Step 2: Run to verify it fails**
 
@@ -780,7 +780,7 @@ Expected: FAIL, modules missing.
 
 - [ ] **Step 3: Implement tokens, components, decor, fonts, and restyle Attract, Capture, Review and the payment/output/delivery placeholders**
 
-Values come from `docs/DESIGN.md` (palette, outline 3–4 px, offset shadow `4px 6px 0`, type, 96 px buttons). Fonts are imported from the `@fontsource` packages so the build bundles them; no network at runtime. `prefers-reduced-motion` disables sticker wobble and button bounce. Timer pill on Review reads `REVIEW_TIMEOUT_MS` minus elapsed from the state's `enteredAt`; it must not start or own any timer.
+Values come from `docs/DESIGN.md` (palette, outline 3–4 px, hard slab shadow `6px 6px 0`, 14–20 px corners, type, 96 px buttons). Fonts are imported from the `@fontsource` packages so the build bundles them; no network at runtime. `prefers-reduced-motion` disables decor wobble/spin, the film-band drift, the countdown pop and the start-button pulse. Timer pill on Review reads `REVIEW_TIMEOUT_MS` minus elapsed from the state's `enteredAt`; it must not start or own any timer.
 
 - [ ] **Step 4: Run to verify it passes**
 
@@ -791,7 +791,7 @@ Expected: PASS, including every existing e2e spec unchanged.
 
 ```bash
 git add apps/kiosk docs
-git commit -m "feat(kiosk): add retro sticker visual theme and themed screens"
+git commit -m "feat(kiosk): add Pop Film Lab visual theme and themed screens"
 ```
 
 ---

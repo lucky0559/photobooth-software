@@ -1,0 +1,380 @@
+/* "Pop Film Lab" theme (docs/DESIGN.md). Guest screens only; Setup/PIN keep the plain staff look. */
+:root {
+  --outline-w: clamp(3px, 0.36vmin, 5px);
+  /* Slab shadow: hard, pure down-right. `--slab` is ink on light screens and aqua on dark ones. */
+  --slab: var(--ink);
+  --shadow: 6px 6px 0 var(--slab);
+  --shadow-pressed: 2px 2px 0 var(--slab);
+  --radius: clamp(14px, 1.7vmin, 20px);
+  --font-display: 'Bungee', 'Outfit', system-ui, sans-serif;
+  --font-body: 'Outfit', system-ui, sans-serif;
+  --gutter: clamp(16px, 3.6vmin, 56px);
+  --gap: clamp(12px, 2.4vmin, 40px);
+}
+
+/* ---------- Stage: a themed full-screen guest screen ---------- */
+
+.stage {
+  position: relative;
+  isolation: isolate;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--gap);
+  padding: var(--gutter);
+  color: var(--ink);
+  background: var(--paper);
+  font-family: var(--font-body);
+  font-weight: 600;
+}
+
+/* Shadows are re-declared here: custom properties resolve `var()` where they are declared, not where used. */
+.stage--dark {
+  --slab: var(--aqua);
+  --shadow: 6px 6px 0 var(--slab);
+  --shadow-pressed: 2px 2px 0 var(--slab);
+  color: var(--paper);
+  background: var(--ink);
+}
+
+.stage__center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: calc(var(--gap) * 1.4);
+  min-height: 0;
+}
+
+/* A row of decor marks in normal flow, so decor can never sit on top of controls. */
+.decor-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  flex: none;
+}
+
+.title-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--gap);
+  flex: none;
+  max-width: 100%;
+}
+
+.topbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  width: 100%;
+  flex: none;
+}
+
+/* ---------- Backdrops ---------- */
+
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.backdrop--film,
+.backdrop--darkroom {
+  background: var(--ink);
+}
+
+.backdrop--paper {
+  background: var(--paper);
+}
+
+.backdrop__dots {
+  position: absolute;
+}
+
+.backdrop--paper .backdrop__dots {
+  opacity: 0.5;
+}
+
+.backdrop__dots--tl {
+  top: 0;
+  left: 0;
+}
+
+.backdrop__dots--br {
+  right: 0;
+  bottom: 0;
+  transform: scale(-1, -1);
+}
+
+.backdrop__band {
+  position: absolute;
+  top: 16%;
+  left: -40vmax;
+  width: 330vmax;
+  transform: rotate(-7deg);
+}
+
+.backdrop__film {
+  animation: pb-drift 90s linear infinite;
+}
+
+/* Payment / delivery: flat tangerine stripes over paper, split on a diagonal with an ink edge. */
+.backdrop--stripes {
+  background: var(--paper);
+}
+
+.backdrop--stripes::before,
+.backdrop--stripes::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+}
+
+.backdrop--stripes::before {
+  background: var(--ink);
+  clip-path: polygon(0 0, 100% 0, 100% calc(34% + 1.2vmin), 0 calc(48% + 1.2vmin));
+}
+
+.backdrop--stripes::after {
+  background: repeating-linear-gradient(
+    -45deg,
+    var(--tangerine) 0 3.6vmin,
+    var(--paper) 3.6vmin 4.4vmin
+  );
+  clip-path: polygon(0 0, 100% 0, 100% 34%, 0 48%);
+}
+
+/* ---------- Banner title ---------- */
+
+.banner-title {
+  display: inline-block;
+  margin: 0;
+  max-width: 100%;
+  padding: 0.22em 0.6em 0.18em;
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: clamp(40px, 6.2vmin, 108px);
+  line-height: 1.1;
+  text-align: center;
+  color: var(--ink);
+  border: var(--outline-w) solid var(--ink);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  transform: rotate(var(--tilt, -2deg));
+}
+
+.banner-title--tangerine {
+  background: var(--tangerine);
+}
+
+.banner-title--lime {
+  background: var(--lime);
+}
+
+.banner-title--aqua {
+  background: var(--aqua);
+}
+
+.banner-title--ink {
+  color: var(--paper);
+  background: var(--ink);
+  border-color: var(--paper);
+}
+
+/* ---------- Action button ---------- */
+
+.action {
+  position: relative;
+  min-height: 96px;
+  padding: 0.42em 1.3em 0.38em;
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: clamp(36px, 3.8vmin, 60px);
+  line-height: 1.1;
+  color: var(--ink);
+  border: var(--outline-w) solid var(--ink);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  cursor: pointer;
+  transition: transform 70ms ease-out, box-shadow 70ms ease-out;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Perforation line near the end, like a tear-off ticket stub. */
+.action::before {
+  content: '';
+  position: absolute;
+  top: 18%;
+  bottom: 18%;
+  right: 0.6em;
+  border-left: max(2px, 0.25vmin) dashed rgb(15 27 61 / 0.45);
+  pointer-events: none;
+}
+
+.action--primary {
+  background: var(--lime);
+}
+
+.action--secondary {
+  background: var(--aqua);
+}
+
+.action--danger {
+  background: var(--tangerine);
+}
+
+.action:focus-visible {
+  outline: 4px solid var(--tangerine);
+  outline-offset: 5px;
+}
+
+.stage--dark .action:focus-visible {
+  outline-color: var(--lime);
+}
+
+.action:active:not(:disabled) {
+  transform: translate(4px, 4px);
+  box-shadow: var(--shadow-pressed);
+}
+
+.action:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.action--hero {
+  font-size: clamp(48px, 7vmin, 120px);
+  padding: 0.4em 1.2em 0.36em;
+}
+
+/*
+ * Attention cue for the start button: a frame pulses out from behind it while the button box itself stays put
+ * (a hopping button is harder to hit and fails click-stability checks).
+ */
+.action--pulse:not(:disabled)::after {
+  content: '';
+  position: absolute;
+  inset: calc(-1 * var(--outline-w));
+  border: var(--outline-w) solid var(--lime);
+  border-radius: inherit;
+  pointer-events: none;
+  animation: pb-pulse 1.8s ease-out infinite;
+}
+
+/* ---------- Timer pill ---------- */
+
+.timer-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35em;
+  margin: 0;
+  padding: 0.18em 0.7em 0.14em;
+  font-family: var(--font-display);
+  font-size: clamp(32px, 4vmin, 64px);
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+  color: var(--lime);
+  background: var(--ink);
+  border: var(--outline-w) solid var(--ink);
+  border-radius: 999px;
+  box-shadow: 6px 6px 0 var(--aqua);
+}
+
+/* ---------- Framed card ---------- */
+
+.framed-card {
+  /* Controls inside a paper card use the ink slab even on dark screens; the card itself keeps the outer slab. */
+  --inner-slab: var(--ink);
+  position: relative;
+  background: var(--paper);
+  color: var(--ink);
+  border: var(--outline-w) solid var(--ink);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: var(--gutter);
+}
+
+.framed-card .action {
+  box-shadow: 6px 6px 0 var(--inner-slab);
+}
+
+.framed-card .action:active:not(:disabled) {
+  box-shadow: 2px 2px 0 var(--inner-slab);
+}
+
+.framed-card--polaroid {
+  border-radius: 6px;
+  padding: clamp(14px, 2.4vmin, 36px) clamp(14px, 2.4vmin, 36px) clamp(48px, 9vmin, 150px);
+  transform: rotate(-1.5deg);
+}
+
+.framed-card__tape {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  translate: -50% -50%;
+  rotate: 3deg;
+}
+
+/* ---------- Decor ---------- */
+
+.decor {
+  display: block;
+  flex: none;
+  width: var(--decor-size, 14vmin);
+  height: auto;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.decor--wobble {
+  animation: pb-wobble 3.4s ease-in-out infinite;
+}
+
+.decor--spin {
+  animation: pb-spin 6s linear infinite;
+}
+
+/* ---------- Animations (transform/opacity only) ---------- */
+
+@keyframes pb-drift {
+  to { transform: translateX(-33.3333%); }
+}
+
+@keyframes pb-pulse {
+  from { transform: scale(1); opacity: 0.9; }
+  to { transform: scale(1.1, 1.35); opacity: 0; }
+}
+
+@keyframes pb-wobble {
+  0%, 100% { transform: rotate(-8deg); }
+  50% { transform: rotate(8deg); }
+}
+
+@keyframes pb-spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes pb-pop {
+  from { transform: scale(1.3); }
+  to { transform: scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .decor--wobble,
+  .decor--spin,
+  .backdrop__film,
+  .action--pulse:not(:disabled)::after,
+  .countdown__num {
+    animation: none;
+  }
+
+  .action--pulse:not(:disabled)::after {
+    opacity: 0;
+  }
+}
