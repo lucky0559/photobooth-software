@@ -1,7 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PaymentStatus } from '../src/renderer/src/api/kiosk-api';
 import {
+  CALL_TIMEOUT_MS,
   CANCEL_RETRIES,
+  CANCEL_RETRY_MS,
+  CREATE_TIMEOUT_MS,
   POLL_MS,
   UNAVAILABLE_MS,
   createPaymentOnce,
@@ -272,13 +275,131 @@ describe('startPaymentFlow', () => {
 
   it('a payment still being created at the deadline cancels at once and voids the late payment', async () => {
     let resolve: (p: CreatedPayment) => void = () => undefined;
-    const { api, events } = setup({ payment: new Promise((r) => (resolve = r)) });
-    await vi.advanceTimersByTimeAsync(TIMEOUT);
+    // Remounted with 5 s left, so the deadline comes before the create timeout.
+    const { api, events } = setup({ startedAt: T0 - 175_000, payment: new Promise((r) => (resolve = r)) });
+    await vi.advanceTimersByTimeAsync(5_000);
     expect(events).toEqual(['cancelled']);
     resolve(created);
     await vi.advanceTimersByTimeAsync(0);
     expect(api.cancelPayment).toHaveBeenCalledTimes(1);
     expect(events).toEqual(['cancelled']);
+  });
+
+  it('voids the late payment even after the screen unmounted (dispose)', async () => {
+    let resolve: (p: CreatedPayment) => void = () => undefined;
+    const { api, events, onReady, flow } = setup({ payment: new Promise((r) => (resolve = r)) });
+    flow.cancel();
+    flow.dispose();
+    resolve({ ...created, paymentId: 'late-1' });
+    await vi.advanceTimersByTimeAsync(TIMEOUT);
+    expect(api.cancelPayment).toHaveBeenCalledTimes(1);
+    expect(api.cancelPayment).toHaveBeenCalledWith('late-1');
+    expect(onReady).not.toHaveBeenCalled();
+    expect(events).toEqual(['cancelled']);
+  });
+});
+
+describe('startPaymentFlow: hung calls time out', () => {
+  const hang = <T,>(): Promise<T> => new Promise<T>(() => undefined);
+
+  it('a cancelPayment that never answers retries, then cancels when the retries run out', async () => {
+    const { api, events, statuses, flow } = setup();
+    await vi.advanceTimersByTimeAsync(0);
+    api.cancelPayment.mockImplementation(hang);
+    flow.cancel();
+    // Each attempt: CALL_TIMEOUT_MS, then CANCEL_RETRY_MS before the next one.
+    const exhausted = (CANCEL_RETRIES + 1) * CALL_TIMEOUT_MS + CANCEL_RETRIES * CANCEL_RETRY_MS;
+    await vi.advanceTimersByTimeAsync(CALL_TIMEOUT_MS);
+    expect(statuses).toContain('checking');
+    await vi.advanceTimersByTimeAsync(exhausted - CALL_TIMEOUT_MS - 1);
+    expect(api.cancelPayment).toHaveBeenCalledTimes(CANCEL_RETRIES + 1);
+    expect(events).toEqual([]);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(events).toEqual(['cancelled']);
+    await vi.advanceTimersByTimeAsync(TIMEOUT);
+    expect(api.cancelPayment).toHaveBeenCalledTimes(CANCEL_RETRIES + 1);
+    expect(events).toEqual(['cancelled']);
+  });
+
+  it('a cancelPayment that times out once and then answers "paid" pays', async () => {
+    const { api, events, statuses, flow } = setup();
+    await vi.advanceTimersByTimeAsync(0);
+    api.cancelPayment.mockImplementationOnce(hang).mockResolvedValueOnce('paid');
+    flow.cancel();
+    await vi.advanceTimersByTimeAsync(CALL_TIMEOUT_MS);
+    expect(statuses).toEqual(['checking']);
+    expect(events).toEqual([]);
+    await vi.advanceTimersByTimeAsync(CANCEL_RETRY_MS);
+    expect(api.cancelPayment).toHaveBeenCalledTimes(2);
+    expect(events).toEqual(['paid']);
+  });
+
+  it('a timed-out cancel that answers "paid" late is honoured, once', async () => {
+    const { api, events, flow } = setup();
+    await vi.advanceTimersByTimeAsync(0);
+    let answerLate: (r: 'cancelled' | 'paid') => void = () => undefined;
+    api.cancelPayment
+      .mockImplementationOnce(() => new Promise((r) => (answerLate = r)))
+      .mockResolvedValueOnce('cancelled');
+    flow.cancel();
+    await vi.advanceTimersByTimeAsync(CALL_TIMEOUT_MS + 500);
+    answerLate('paid');
+    await vi.advanceTimersByTimeAsync(TIMEOUT);
+    expect(events).toEqual(['paid']);
+    expect(api.cancelPayment).toHaveBeenCalledTimes(1);
+  });
+
+  it('a getPaymentStatus that never answers does not stop later polls', async () => {
+    const { api, setStatus, events } = setup();
+    api.getPaymentStatus.mockImplementationOnce(hang);
+    await vi.advanceTimersByTimeAsync(POLL_MS);
+    expect(api.getPaymentStatus).toHaveBeenCalledTimes(1);
+    setStatus('paid');
+    await vi.advanceTimersByTimeAsync(CALL_TIMEOUT_MS + POLL_MS);
+    expect(api.getPaymentStatus).toHaveBeenCalledTimes(2);
+    expect(events).toEqual(['paid']);
+  });
+
+  it('a createPayment that never answers shows "unavailable", then cancels 10 s later', async () => {
+    const { api, events, statuses, onReady } = setup({ payment: hang() });
+    await vi.advanceTimersByTimeAsync(CREATE_TIMEOUT_MS - 1);
+    expect(statuses).toEqual([]);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(statuses).toEqual(['unavailable']);
+    await vi.advanceTimersByTimeAsync(UNAVAILABLE_MS);
+    expect(events).toEqual(['cancelled']);
+    expect(onReady).not.toHaveBeenCalled();
+    expect(api.cancelPayment).not.toHaveBeenCalled();
+  });
+
+  it('a createPayment that answers after its timeout is voided, not shown', async () => {
+    let resolve: (p: CreatedPayment) => void = () => undefined;
+    const { api, events, onReady } = setup({ payment: new Promise((r) => (resolve = r)) });
+    await vi.advanceTimersByTimeAsync(CREATE_TIMEOUT_MS + 1_000);
+    resolve(created);
+    await vi.advanceTimersByTimeAsync(UNAVAILABLE_MS);
+    expect(onReady).not.toHaveBeenCalled();
+    expect(api.cancelPayment).toHaveBeenCalledWith('p1');
+    expect(events).toEqual(['cancelled']);
+  });
+});
+
+describe('startPaymentFlow: server-side status', () => {
+  it('a poll that says "cancelled" asks the server and follows its answer', async () => {
+    const { api, setStatus, events } = setup();
+    setStatus('cancelled');
+    await vi.advanceTimersByTimeAsync(POLL_MS);
+    expect(api.cancelPayment).toHaveBeenCalledTimes(1);
+    expect(events).toEqual(['cancelled']);
+  });
+
+  it('a poll that says "failed" keeps the QR up and keeps polling', async () => {
+    const { api, setStatus, events } = setup();
+    setStatus('failed');
+    await vi.advanceTimersByTimeAsync(POLL_MS * 3);
+    expect(api.getPaymentStatus).toHaveBeenCalledTimes(3);
+    expect(api.cancelPayment).not.toHaveBeenCalled();
+    expect(events).toEqual([]);
   });
 });
 
