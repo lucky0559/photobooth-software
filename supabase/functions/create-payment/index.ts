@@ -102,10 +102,12 @@ Deno.serve(
     const amountCentavos = sessionAmountCentavos(settings);
     if (amountCentavos < MIN_AMOUNT_CENTAVOS) throw new Error('configured price is below the minimum');
 
+    // Any live template (not necessarily the active one: the kiosk's cached settings can lag up to 60 s).
     const { count, error: tErr } = await db
       .from('templates')
       .select('id', { count: 'exact', head: true })
-      .eq('id', input.templateId);
+      .eq('id', input.templateId)
+      .eq('archived', false);
     if (tErr) throw tErr;
     if (count !== 1) throw new HttpError(400, 'invalid_template_id');
 

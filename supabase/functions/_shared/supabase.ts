@@ -1,6 +1,7 @@
 // Supabase clients, kiosk authentication and the Postgres PaymentStore for the Edge Functions.
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { HttpError, requireEnv } from './http.ts';
+import type { TrimmedEvent } from './paymongo.ts';
 import type { PaymentStatus, PaymentStore } from './payments.ts';
 
 const noSession = { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } };
@@ -86,9 +87,15 @@ export class SupabasePaymentStore implements PaymentStore {
     return data ? asStatus(data.status) : null;
   }
 
-  /** Raw webhook event, for the operator; informational only. */
-  async recordEvent(intentId: string, event: unknown): Promise<void> {
-    const { error } = await this.db.from('payments').update({ last_event: event }).eq('provider_intent_id', intentId);
+  /** Trimmed webhook event, for the operator; returns the stored amount (null: no payment for that intent). */
+  async recordEvent(intentId: string, event: TrimmedEvent): Promise<number | null> {
+    const { data, error } = await this.db
+      .from('payments')
+      .update({ last_event: event })
+      .eq('provider_intent_id', intentId)
+      .select('amount_centavos')
+      .maybeSingle<{ amount_centavos: number }>();
     if (error) throw error;
+    return data?.amount_centavos ?? null;
   }
 }

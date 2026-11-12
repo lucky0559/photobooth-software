@@ -24,6 +24,7 @@ Deno.test({
     const { data: original, error: sErr } = await db.from('settings').select('price_centavos, free_mode').eq('id', 1).single();
     if (sErr) throw sErr;
     const sessions: string[] = [];
+    const templates: string[] = [];
 
     const setSettings = async (price: number, free: boolean) => {
       const { error } = await db.from('settings').update({ price_centavos: price, free_mode: free }).eq('id', 1);
@@ -52,7 +53,7 @@ Deno.test({
         provider_intent_id: string;
         amount_centavos: number;
         qr_image: string | null;
-        last_event: { data: { id: string; attributes: { type: string } } } | null;
+        last_event: Record<string, unknown> | null;
         sessions: { status: string; kiosk_id: string; amount_centavos: number; download_token: string };
       };
     };
@@ -151,6 +152,25 @@ Deno.test({
         assertEquals(pre.headers.get('access-control-allow-credentials'), null);
       });
 
+      await t.step('create-payment: archived template -> 400, no PayMongo call (active template not required)', async () => {
+        const archivedId = crypto.randomUUID();
+        const otherId = crypto.randomUUID();
+        templates.push(archivedId, otherId);
+        const { error } = await db.from('templates').insert([
+          { id: archivedId, name: 'it archived', layout: 'strip_2x6', overlay_path: 'x.png', archived: true },
+          { id: otherId, name: 'it not active', layout: 'print_4r', overlay_path: 'y.png', archived: false },
+        ]);
+        if (error) throw error;
+        await stub('/__reset');
+        const input = newSession();
+        const r = await callFn('create-payment', { jwt: kioskA.jwt, body: { ...input, templateId: archivedId } });
+        assertEquals([r.status, r.body], [400, { error: 'invalid_template_id' }]);
+        assertEquals((await calls()).createIntent, 0);
+        // A live template that is not the active one is fine (the kiosk's cached template can lag).
+        const ok = await callFn('create-payment', { jwt: kioskA.jwt, body: { ...newSession(), templateId: otherId } });
+        assertEquals(ok.status, 200);
+      });
+
       await t.step('create-payment: no JWT 401, anon key 401, admin 403', async () => {
         const input = newSession();
         assertEquals((await callFn('create-payment', { body: input })).status, 401);
@@ -171,13 +191,13 @@ Deno.test({
         assertEquals(count, 0);
       });
 
-      await t.step('webhook: bad, missing, stale or wrong-mode signature -> 401, nothing changes', async () => {
+      await t.step('webhook: bad, missing, malformed or wrong-mode signature -> 401, nothing changes', async () => {
         const { paymentId, intentId } = await created();
         const raw = webhookEvent('payment.paid', intentId);
         assertEquals((await sendWebhook(raw, { secret: 'whsk_wrong' })).status, 401);
         assertEquals((await callFn('paymongo-webhook', { rawBody: raw })).status, 401);
-        assertEquals((await sendWebhook(raw, { t: Math.floor(Date.now() / 1000) - 3600 })).status, 401);
         assertEquals((await sendWebhook(raw, { header: 'garbage' })).status, 401);
+        assertEquals((await sendWebhook(raw, { header: 't=,te=,li=' })).status, 401);
         assertEquals((await payment(paymentId)).status, 'pending');
         assertEquals((await callFn('paymongo-webhook', { method: 'GET' })).status, 405);
       });
@@ -190,10 +210,43 @@ Deno.test({
         const p = await payment(paymentId);
         assertEquals([p.status, p.sessions.status], ['paid', 'paid']);
         assert(p.paid_at);
-        assertEquals(p.last_event?.data.id, JSON.parse(raw).data.id);
+        assertEquals(p.last_event?.id, JSON.parse(raw).data.id);
         assertEquals((await sendWebhook(webhookEvent('payment.paid', intentId, PRICE))).status, 200);
         const again = await payment(paymentId);
         assertEquals([again.status, again.sessions.status, again.paid_at], ['paid', 'paid', p.paid_at]);
+      });
+
+      await t.step('webhook: an OLD but correctly signed event is accepted and applied (no replay window)', async () => {
+        const { paymentId, intentId } = await created();
+        const r = await sendWebhook(webhookEvent('payment.paid', intentId, PRICE), { t: Math.floor(Date.now() / 1000) - 3 * 86400 });
+        assertEquals(r.status, 200);
+        const p = await payment(paymentId);
+        assertEquals([p.status, p.sessions.status], ['paid', 'paid']);
+      });
+
+      await t.step('webhook: last_event is trimmed (no billing/contact details)', async () => {
+        const { paymentId, intentId } = await created();
+        const ev = JSON.parse(webhookEvent('payment.paid', intentId, PRICE));
+        ev.data.attributes.data.attributes.billing = { name: 'Juan dela Cruz', email: 'juan@example.com', phone: '09111111111' };
+        assertEquals((await sendWebhook(JSON.stringify(ev))).status, 200);
+        const p = await payment(paymentId);
+        assertEquals(p.last_event, {
+          id: ev.data.id,
+          type: 'payment.paid',
+          amount: PRICE,
+          currency: 'PHP',
+          status: 'paid',
+          paid_at: ev.data.attributes.data.attributes.paid_at,
+          payment_intent_id: intentId,
+        });
+        // The kiosk can read last_event of its own payments: it must not see the payer's details.
+        const res = await fetch(`${(await localStack()).apiUrl}/rest/v1/payments?id=eq.${paymentId}&select=last_event`, {
+          headers: { apikey: anonKey, authorization: `Bearer ${kioskA.jwt}` },
+        });
+        const text = await res.text();
+        assertEquals(res.status, 200);
+        assert(text.includes(intentId));
+        assertEquals(text.includes('juan'), false);
       });
 
       await t.step('webhook: concurrent duplicate deliveries -> one transition', async () => {
@@ -214,7 +267,7 @@ Deno.test({
         assertEquals((await sendWebhook(webhookEvent('payment.failed', intentId, PRICE))).status, 200);
         const p = await payment(paymentId);
         assertEquals([p.status, p.sessions.status], ['pending', 'awaiting_payment']);
-        assertEquals(p.last_event?.data.attributes.type, 'payment.failed');
+        assertEquals(p.last_event?.type, 'payment.failed');
       });
 
       await t.step('cancel-payment: pending -> cancelled (payment and session); idempotent', async () => {
@@ -286,6 +339,7 @@ Deno.test({
         await db.from('payments').delete().in('session_id', sessions);
         await db.from('sessions').delete().in('id', sessions);
       }
+      if (templates.length > 0) await db.from('templates').delete().in('id', templates);
     }
   },
 });

@@ -5,6 +5,7 @@ import {
   parseWebhookEvent,
   PayMongoError,
   qrImageDataUrlFrom,
+  trimEvent,
   verifyWebhookSignature,
 } from './paymongo.ts';
 import { startPayMongoStub } from '../_testing/paymongo-stub.ts';
@@ -26,51 +27,49 @@ const fixture = (name: string): unknown =>
 
 Deno.test('valid test-mode signature passes; tampered body fails; live uses li', async () => {
   const body = '{"a":1}', t = '1700000000', secret = 'whsk_test';
-  const now = { nowSeconds: 1700000000 };
   const sig = await hmacHex(secret, `${t}.${body}`);
-  assertEquals(await verifyWebhookSignature(`t=${t},te=${sig},li=`, body, secret, 'test', now), true);
-  assertEquals(await verifyWebhookSignature(`t=${t},te=${sig},li=`, body + ' ', secret, 'test', now), false);
-  assertEquals(await verifyWebhookSignature(`t=${t},te=,li=${sig}`, body, secret, 'live', now), true);
-  assertEquals(await verifyWebhookSignature('garbage', body, secret, 'test', now), false);
+  assertEquals(await verifyWebhookSignature(`t=${t},te=${sig},li=`, body, secret, 'test'), true);
+  assertEquals(await verifyWebhookSignature(`t=${t},te=${sig},li=`, body + ' ', secret, 'test'), false);
+  assertEquals(await verifyWebhookSignature(`t=${t},te=,li=${sig}`, body, secret, 'live'), true);
+  assertEquals(await verifyWebhookSignature('garbage', body, secret, 'test'), false);
 });
 
 Deno.test('signature: mode picks te or li, never the other one', async () => {
   const body = '{"a":1}', t = '1700000000', secret = 'whsk_test';
-  const now = { nowSeconds: 1700000000 };
   const sig = await hmacHex(secret, `${t}.${body}`);
-  assertEquals(await verifyWebhookSignature(`t=${t},te=,li=${sig}`, body, secret, 'test', now), false);
-  assertEquals(await verifyWebhookSignature(`t=${t},te=${sig},li=`, body, secret, 'live', now), false);
+  assertEquals(await verifyWebhookSignature(`t=${t},te=,li=${sig}`, body, secret, 'test'), false);
+  assertEquals(await verifyWebhookSignature(`t=${t},te=${sig},li=`, body, secret, 'live'), false);
 });
 
 Deno.test('signature: wrong secret, wrong timestamp, malformed parts fail', async () => {
   const body = '{"a":1}', t = '1700000000', secret = 'whsk_test';
-  const now = { nowSeconds: 1700000000 };
   const sig = await hmacHex(secret, `${t}.${body}`);
-  assertEquals(await verifyWebhookSignature(`t=${t},te=${sig},li=`, body, 'whsk_other', 'test', now), false);
-  assertEquals(await verifyWebhookSignature(`t=1700000001,te=${sig},li=`, body, secret, 'test', now), false);
-  assertEquals(await verifyWebhookSignature(`te=${sig},li=`, body, secret, 'test', now), false);
-  assertEquals(await verifyWebhookSignature(`t=${t},te=${sig.slice(2)},li=`, body, secret, 'test', now), false);
-  assertEquals(await verifyWebhookSignature(`t=${t},te=${sig}zz,li=`, body, secret, 'test', now), false);
-  assertEquals(await verifyWebhookSignature(`t=abc,te=${sig},li=`, body, secret, 'test', now), false);
-  assertEquals(await verifyWebhookSignature('', body, secret, 'test', now), false);
-  assertEquals(await verifyWebhookSignature(`t=${t},te=${sig},li=`, body, '', 'test', now), false);
+  assertEquals(await verifyWebhookSignature(`t=${t},te=${sig},li=`, body, 'whsk_other', 'test'), false);
+  assertEquals(await verifyWebhookSignature(`t=1700000001,te=${sig},li=`, body, secret, 'test'), false);
+  assertEquals(await verifyWebhookSignature(`te=${sig},li=`, body, secret, 'test'), false);
+  assertEquals(await verifyWebhookSignature(`t=,te=${sig},li=`, body, secret, 'test'), false);
+  assertEquals(await verifyWebhookSignature(`t=${t},te=${sig.slice(2)},li=`, body, secret, 'test'), false);
+  assertEquals(await verifyWebhookSignature(`t=${t},te=${sig}zz,li=`, body, secret, 'test'), false);
+  assertEquals(await verifyWebhookSignature(`t=abc,te=${sig},li=`, body, secret, 'test'), false);
+  assertEquals(await verifyWebhookSignature(`t=-1,te=${sig},li=`, body, secret, 'test'), false);
+  assertEquals(await verifyWebhookSignature('', body, secret, 'test'), false);
+  assertEquals(await verifyWebhookSignature(`t=${t},te=${sig},li=`, body, '', 'test'), false);
+  // Empty or missing te/li never verify.
+  assertEquals(await verifyWebhookSignature(`t=${t},te=,li=`, body, secret, 'test'), false);
+  assertEquals(await verifyWebhookSignature(`t=${t},te=,li=`, body, secret, 'live'), false);
+  assertEquals(await verifyWebhookSignature(`t=${t},li=${sig}`, body, secret, 'test'), false);
   // Uppercase hex is the same signature.
-  assertEquals(await verifyWebhookSignature(`t=${t},te=${sig.toUpperCase()},li=`, body, secret, 'test', now), true);
+  assertEquals(await verifyWebhookSignature(`t=${t},te=${sig.toUpperCase()},li=`, body, secret, 'test'), true);
   // Whitespace around parts is tolerated.
-  assertEquals(await verifyWebhookSignature(`t=${t}, te=${sig}, li=`, body, secret, 'test', now), true);
+  assertEquals(await verifyWebhookSignature(`t=${t}, te=${sig}, li=`, body, secret, 'test'), true);
 });
 
-Deno.test('signature: timestamps outside the 10 minute tolerance are rejected (replay)', async () => {
-  const body = '{"a":1}', t = 1700000000, secret = 'whsk_test';
-  const sig = await hmacHex(secret, `${t}.${body}`);
-  const header = `t=${t},te=${sig},li=`;
-  assertEquals(await verifyWebhookSignature(header, body, secret, 'test', { nowSeconds: t + 600 }), true);
-  assertEquals(await verifyWebhookSignature(header, body, secret, 'test', { nowSeconds: t + 601 }), false);
-  assertEquals(await verifyWebhookSignature(header, body, secret, 'test', { nowSeconds: t - 601 }), false);
-  // Default clock: a fresh timestamp passes.
-  const nowT = Math.floor(Date.now() / 1000);
-  const fresh = await hmacHex(secret, `${nowT}.${body}`);
-  assertEquals(await verifyWebhookSignature(`t=${nowT},te=${fresh},li=`, body, secret, 'test'), true);
+Deno.test('signature: no replay window; an old but correctly signed event verifies (idempotency protects)', async () => {
+  const body = '{"a":1}', secret = 'whsk_test';
+  for (const t of [1, 1700000000, Math.floor(Date.now() / 1000) - 7 * 86400, Math.floor(Date.now() / 1000)]) {
+    const sig = await hmacHex(secret, `${t}.${body}`);
+    assertEquals(await verifyWebhookSignature(`t=${t},te=${sig},li=`, body, secret, 'test'), true, `t=${t}`);
+  }
 });
 
 Deno.test('parsePaidEvent reads the fixture; returns null for other events', () => {
@@ -95,6 +94,42 @@ Deno.test('parsePaidEvent rejects malformed paid events', () => {
   assertEquals(parsePaidEvent(paid({ attributes: { payment_intent_id: 'pi_x', amount: 15000 } })), {
     intentId: 'pi_x',
     amountCentavos: 15000,
+  });
+});
+
+Deno.test('trimEvent keeps only the payment summary, never billing or contact details', () => {
+  const ev = fixture('webhook-payment-paid.json') as {
+    data: { attributes: { data: { attributes: Record<string, unknown> } } };
+  };
+  ev.data.attributes.data.attributes.billing = {
+    name: 'Juan dela Cruz',
+    email: 'juan@example.com',
+    phone: '09111111111',
+    address: { line1: '1 Rizal St', city: 'Manila' },
+  };
+  const trimmed = trimEvent(ev);
+  assertEquals(trimmed, {
+    id: 'evt_SyntheticFixture00000001',
+    type: 'payment.paid',
+    amount: 15000,
+    currency: 'PHP',
+    status: 'paid',
+    paid_at: 1762900100,
+    payment_intent_id: 'pi_SyntheticFixture0000000001',
+  });
+  const text = JSON.stringify(trimmed);
+  for (const leaked of ['Juan', 'juan@example.com', '0911', 'Rizal', 'metadata', 'billing']) {
+    assertEquals(text.includes(leaked), false, leaked);
+  }
+  // Missing or wrongly typed fields become null; nothing else is copied.
+  assertEquals(trimEvent({ data: { id: 5, attributes: { type: 'qr.expired', extra: 'x' } } }), {
+    id: null,
+    type: 'qr.expired',
+    amount: null,
+    currency: null,
+    status: null,
+    paid_at: null,
+    payment_intent_id: null,
   });
 });
 

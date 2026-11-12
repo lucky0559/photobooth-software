@@ -83,12 +83,16 @@ export function requireEnv(name: string): string {
   return v;
 }
 
-/** Logs without stack traces or values that could carry secrets: only the error's name, message and code. */
+/**
+ * Logs without stack traces or values that could carry data: an error with a `code` (Postgres/PostgREST errors, whose
+ * messages and details can quote row values such as a download token) is logged by its code only; other errors by
+ * name and message (our own messages never contain secrets).
+ */
 export function logError(where: string, err: unknown): void {
-  if (err instanceof Error) console.error(`${where}: ${err.name}: ${err.message}`);
-  else if (typeof err === 'object' && err !== null && 'code' in err) {
+  if (typeof err === 'object' && err !== null && 'code' in err && (err as { code: unknown }).code) {
     console.error(`${where}: code ${String((err as { code: unknown }).code)}`);
-  } else console.error(`${where}: unknown error`);
+  } else if (err instanceof Error) console.error(`${where}: ${err.name}: ${err.message}`);
+  else console.error(`${where}: unknown error`);
 }
 
 /** Wraps a handler: HttpError → its status, anything else → 500 without details. */

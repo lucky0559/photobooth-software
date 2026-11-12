@@ -20,15 +20,15 @@
 //
 // Signature (docs): header `Paymongo-Signature: t=<unix ts>,te=<test sig>,li=<live sig>`; signature = HMAC-SHA256 with
 // the webhook's secret key over `${t}.${rawBody}`. The docs do not name the encoding; hex is assumed (64 hex chars).
-// The docs suggest, without a number, comparing `t` to the clock against replays: we allow ±10 minutes.
+// The docs suggest, without a number, comparing `t` to the clock against replays. We deliberately do NOT: if PayMongo
+// retries with the original `t` after an outage, an age limit would reject the late `payment.paid` and lose it. Every
+// state change is idempotent and a signed body names exactly one intent, so a replay changes nothing.
 
 /** PayMongo's own minimum is 100 centavos; the product (and the DB CHECK on settings) requires ₱20.00. */
 export const MIN_AMOUNT_CENTAVOS = 2000;
 export const MAX_AMOUNT_CENTAVOS = 100000;
 /** Seconds a QR stays payable after attach (docs: 60–9000, default 1800). Kiosk payment window is 180 s. */
 export const QR_EXPIRY_SECONDS = 300;
-/** Replay window for webhook timestamps. */
-export const SIGNATURE_TOLERANCE_SECONDS = 600;
 const CALL_TIMEOUT_MS = 10_000;
 const MAX_QR_DATA_URL_LENGTH = 1_000_000;
 const MAX_ID_LENGTH = 255;
@@ -83,6 +83,36 @@ export function parseWebhookEvent(body: unknown): { type: string; intentId: stri
   if (typeof type !== 'string' || type.length === 0 || type.length > 100) return null;
   const intentId = at(body, 'data', 'attributes', 'data', 'attributes', 'payment_intent_id');
   return { type, intentId: isId(intentId) ? intentId : null };
+}
+
+/** What is kept of a webhook event in `payments.last_event` (the kiosk can read that column for its own payments). */
+export interface TrimmedEvent {
+  id: string | null;
+  type: string | null;
+  amount: number | null;
+  currency: string | null;
+  status: string | null;
+  paid_at: number | null;
+  payment_intent_id: string | null;
+}
+
+/**
+ * The event id/type and the payment's amount, currency, status, paid_at and intent id. Nothing else, in particular no
+ * billing/contact details or metadata of the payer.
+ */
+export function trimEvent(body: unknown): TrimmedEvent {
+  const str = (v: unknown, max = MAX_ID_LENGTH) => (typeof v === 'string' && v.length <= max ? v : null);
+  const int = (v: unknown) => (typeof v === 'number' && Number.isInteger(v) ? v : null);
+  const p = (k: string) => at(body, 'data', 'attributes', 'data', 'attributes', k);
+  return {
+    id: str(at(body, 'data', 'id')),
+    type: str(at(body, 'data', 'attributes', 'type'), 100),
+    amount: int(p('amount')),
+    currency: str(p('currency'), 10),
+    status: str(p('status'), 50),
+    paid_at: int(p('paid_at')),
+    payment_intent_id: str(p('payment_intent_id')),
+  };
 }
 
 export function parsePaidEvent(body: unknown): { intentId: string; amountCentavos: number } | null {
@@ -197,14 +227,14 @@ function hexToBytes(hex: string): Uint8Array<ArrayBuffer> | null {
 
 /**
  * Verifies `Paymongo-Signature: t=…,te=…,li=…`: HMAC-SHA256(secret, `${t}.${rawBody}`) must equal `te` (test mode) or
- * `li` (live mode), and `t` must be within ±`toleranceSeconds` of now. Comparison is WebCrypto `verify` (constant time).
+ * `li` (live mode). `t` must be present and numeric (it is part of the signed string) but its age is not checked (see
+ * the top of this file). Comparison is WebCrypto `verify` (constant time).
  */
 export async function verifyWebhookSignature(
   header: string,
   rawBody: string,
   secret: string,
   mode: 'test' | 'live',
-  opts: { nowSeconds?: number; toleranceSeconds?: number } = {},
 ): Promise<boolean> {
   if (!header || !secret || header.length > 1000) return false;
   const parts = new Map<string, string>();
@@ -217,8 +247,6 @@ export async function verifyWebhookSignature(
   }
   const t = parts.get('t');
   if (!t || !/^\d{1,12}$/.test(t)) return false;
-  const now = opts.nowSeconds ?? Math.floor(Date.now() / 1000);
-  if (Math.abs(now - Number(t)) > (opts.toleranceSeconds ?? SIGNATURE_TOLERANCE_SECONDS)) return false;
   const sig = hexToBytes(parts.get(mode === 'live' ? 'li' : 'te') ?? '');
   if (!sig) return false;
   const key = await crypto.subtle.importKey(
