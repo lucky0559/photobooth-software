@@ -18,6 +18,17 @@ Started by Task 5; later tasks extend it.
    `PAYMONGO_WEBHOOK_SECRET` to the secret it shows.
 5. Before taking real money: `docs/ACCEPTANCE.md`, "Task 5 — real PayMongo test-mode run before go-live".
 
+## Operator note: refund signals
+
+- `paid_after_cancel`: the guest cancelled (or the payment screen timed out and the server confirmed the cancel), then
+  the payment still arrived. Refund it.
+- **Paid and not completed after 10 minutes**: during an outage the kiosk can give up asking the server to cancel
+  (about 2.5 minutes of retries) and return to the start screen while the server row is still `awaiting_payment`. If
+  the payment then lands, the webhook records it as plain `paid` (not `paid_after_cancel`, because the cancel never
+  reached the server) and the session is never completed, since the guest has left. The Task 13 dashboard's
+  `needsAttention` list ("paid sessions not completed within 10 minutes", next to `paid_after_cancel`) is therefore
+  the refund signal for this case too.
+
 ## Local
 
 - `supabase/.env.local` (gitignored; copy `supabase/.env.example`, dummy values) for

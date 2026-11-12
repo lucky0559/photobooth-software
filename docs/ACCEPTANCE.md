@@ -59,14 +59,15 @@ Steps and checks:
      signed as `${t}.${rawBody}`.
    - [ ] The intent id is at `data.attributes.data.attributes.payment_intent_id` and the amount at
      `data.attributes.data.attributes.amount` (`parseWebhookEvent` / `parsePaidEvent`).
-   - [ ] `payments.status = 'paid'`, `paid_at` set, `sessions.status = 'paid'`, `payments.last_event` holds the event;
+   - [ ] `payments.status = 'paid'`, `paid_at` set, `sessions.status = 'paid'`, `payments.last_event` holds the trimmed
+     event (id, type, amount, currency, status, paid_at, payment_intent_id; no billing details);
      the kiosk leaves the payment screen.
    - [ ] Save the real webhook body (amounts and ids only, no keys) over `__fixtures__/webhook-payment-paid.json`, the
      real attach response over `__fixtures__/attach-qrph.json`, remove the SYNTHETIC banners, rerun the unit tests.
-3. Retries and replay window: in the dashboard, resend the same event a few minutes later.
-   - [ ] It gets 200 and changes nothing. Note whether `t` in `Paymongo-Signature` is fresh on each resend. If a
-     retry keeps the original `t`, the 10-minute window (`SIGNATURE_TOLERANCE_SECONDS`) would reject late retries:
-     widen it before go-live.
+3. Retries: in the dashboard, resend the same event a few minutes later.
+   - [ ] It gets 200 and changes nothing. We do **not** enforce a replay window on `t` (a late retry carrying the
+     original `t` must still land, or a paid event could be lost after an outage); idempotent state changes are the
+     protection against replays. For the record, note whether `t` is fresh on each resend: ______
 4. Cancel race: start a payment, tap Cancel, then pay the (still valid) QR through the simulation link.
    - [ ] `payments.status = 'paid'`, `sessions.status = 'paid_after_cancel'` (operator refund signal).
 5. Failure: trigger a failed attempt through the simulation link if offered.
