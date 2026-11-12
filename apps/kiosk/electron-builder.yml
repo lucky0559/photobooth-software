@@ -1,0 +1,36 @@
+# Windows installer for the kiosk. Build it ON THE WINDOWS PC: `pnpm --filter kiosk build:win`
+# (docs/DEPLOY.md, section E). The scripts always run the production `pnpm build` first; the beforePack hook
+# refuses a missing/incomplete `out/` or one containing test-only hooks, so the fake-API e2e build (`out-e2e/`)
+# can never be packaged.
+appId: com.photobooth.kiosk
+# Also the Windows userData folder name: %APPDATA%\Photobooth Kiosk
+productName: Photobooth Kiosk
+directories:
+  output: dist
+# Only the production bundle and package.json. Main/preload/renderer are fully bundled by electron-vite
+# (main and preload require only electron and node: builtins), so no node_modules are shipped.
+files:
+  - out/**/*
+  - package.json
+  - '!**/*.map'
+  - '!**/node_modules/**/*'
+asar: true
+# Electron names the app (and so the userData folder) from package.json `productName`, falling back to `name`
+# ("kiosk"). Set it only in the packaged package.json: %APPDATA%\Photobooth Kiosk on Windows. Dev runs keep "kiosk".
+extraMetadata:
+  productName: Photobooth Kiosk
+beforePack: scripts/before-pack.mjs
+# No auto-update: updates are installed by hand (new installer over the old one).
+publish: null
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  # No code signing configured: Windows SmartScreen warns on first install (docs/DEPLOY.md).
+  # Keep signAndEditExecutable on: it writes the exe icon and version metadata (needs Windows, or wine elsewhere).
+nsis:
+  oneClick: false
+  perMachine: true
+  allowToChangeInstallationDirectory: true
+  artifactName: Photobooth-Kiosk-Setup-${version}.${ext}

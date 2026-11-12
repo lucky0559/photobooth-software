@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { findTestHooks } from '../scripts/check-prod-bundle.mjs';
+import { checkPackageableBundle, findTestHooks } from '../scripts/check-prod-bundle.mjs';
 
 describe('findTestHooks (production bundle guard)', () => {
   let dir: string;
@@ -17,6 +17,28 @@ describe('findTestHooks (production bundle guard)', () => {
     writeFileSync(join(dir, 'main', 'index.js'), 'console.log("kiosk")');
     writeFileSync(join(dir, 'renderer', 'assets', 'font.woff2'), 'PB_FAKE in a binary is ignored');
     expect(findTestHooks(dir)).toEqual([]);
+  });
+
+  it('checkPackageableBundle: accepts a complete clean bundle', () => {
+    writeFileSync(join(dir, 'main', 'index.js'), 'console.log("kiosk")');
+    mkdirSync(join(dir, 'preload'));
+    writeFileSync(join(dir, 'preload', 'index.js'), '');
+    writeFileSync(join(dir, 'renderer', 'index.html'), '<html></html>');
+    expect(checkPackageableBundle(dir)).toEqual([]);
+  });
+
+  it('checkPackageableBundle: refuses a missing out/ dir, missing entry files, source maps and test hooks', () => {
+    expect(checkPackageableBundle(join(dir, 'nope'))).toEqual([
+      `${join(dir, 'nope')} is missing: run \`pnpm build\` (the production build) first`,
+    ]);
+    writeFileSync(join(dir, 'main', 'index.js'), 'window.__pbDebug = 1');
+    writeFileSync(join(dir, 'main', 'index.js.map'), '{}');
+    expect(checkPackageableBundle(dir)).toEqual([
+      'missing preload/index.js',
+      'missing renderer/index.html',
+      `source map ${join('main', 'index.js.map')}`,
+      `test-only hook ${join('main', 'index.js')}: __pbDebug`,
+    ]);
   });
 
   it('flags every test-only marker', () => {
