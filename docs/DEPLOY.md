@@ -63,6 +63,7 @@ Started by Task 5; later tasks extend it.
 - Download page `/d/<token>` (public, no login): sends `Cache-Control: no-store`, `X-Robots-Tag: noindex, nofollow`
   and `Referrer-Policy: no-referrer`; photo links are signed for 1 hour. Do not put a caching CDN rule in front of
   `/d/*`.
+- HSTS is sent with includeSubDomains and a 2-year max-age (no preload): every subdomain of the production domain must serve HTTPS before go-live.
 - Link expiry is read live from settings on every `/d/<token>` request, so changing it applies retroactively to old links.
 - A signed photo URL stays valid for up to 1 hour after it was issued, so it can outlive the link expiry by up to 1 hour.
 - The Needs attention list can show an offline booth's un-synced sessions (paid, not yet completed) until it reconnects.

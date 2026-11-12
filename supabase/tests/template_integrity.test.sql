@@ -4,7 +4,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 
-select plan(17);
+select plan(23);
 
 -- ---------------------------------------------------------------------------
 -- Fixtures (as the migration owner)
@@ -96,11 +96,41 @@ select throws_ok(
 
 select lives_ok(
   $$ insert into public.templates (name, layout, overlay_path) values (repeat('é', 60), 'strip_2x6', 'sixty.png') $$,
-  'template name of exactly 60 characters is accepted');
+  'template name of exactly 60 BMP characters is accepted');
+
+select lives_ok(
+  $$ insert into public.templates (name, layout, overlay_path) values (repeat('x', 60), 'strip_2x6', 'sixty-ascii.png') $$,
+  'template name of exactly 60 ASCII characters is accepted');
+
+-- Emoji are 2 UTF-16 code units each (what the kiosk validator counts).
+select lives_ok(
+  $$ insert into public.templates (name, layout, overlay_path) values (repeat('😀', 30), 'strip_2x6', 'emoji-30.png') $$,
+  '30 emoji (60 UTF-16 units) are accepted');
+
+select throws_ok(
+  $$ insert into public.templates (name, layout, overlay_path) values (repeat('😀', 31), 'strip_2x6', 'emoji-31.png') $$,
+  '23514', null, '31 emoji (62 UTF-16 units) are rejected');
+
+select throws_ok(
+  $$ insert into public.templates (name, layout, overlay_path) values (repeat('x', 59) || '😀', 'strip_2x6', 'mixed.png') $$,
+  '23514', null, '59 ASCII + 1 emoji (61 UTF-16 units) is rejected');
 
 select is(
   (select count(*)::int from public.templates where char_length(name) not between 1 and 60),
   0, 'every existing template name (including the seed) is 1 to 60 characters');
+
+-- ---------------------------------------------------------------------------
+-- Settings INSERT path (single row: replace it inside this transaction)
+-- ---------------------------------------------------------------------------
+delete from public.settings where id = 1;
+
+select throws_ok(
+  $$ insert into public.settings (id, active_template_id) values (1, 'eeeeeeee-0000-0000-0000-000000000004') $$,
+  '23514', 'active template must not be archived', 'inserting settings with an archived active template is rejected');
+
+select lives_ok(
+  $$ insert into public.settings (id, active_template_id) values (1, 'eeeeeeee-0000-0000-0000-000000000002') $$,
+  'inserting settings with an unarchived active template works');
 
 -- ---------------------------------------------------------------------------
 -- Catalog

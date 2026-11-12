@@ -14,8 +14,8 @@
 --    Functions are security invoker: admins can read settings/templates through RLS and take the row lock (they hold
 --    UPDATE on settings), the service role bypasses RLS, and kiosks/anon cannot update either table at all.
 --
--- 2. templates.name is 1 to 60 characters: the kiosk caches templates and its validator rejects longer names, so an
---    over-long name would invalidate the whole cached template list.
+-- 2. templates.name is 1 to 60 UTF-16 code units: the kiosk caches templates and its validator (JavaScript length)
+--    rejects longer names, so an over-long name would invalidate the whole cached template list.
 
 create function public.templates_keep_active_unarchived() returns trigger
 language plpgsql security invoker set search_path = public
@@ -37,9 +37,16 @@ create function public.settings_active_template_unarchived() returns trigger
 language plpgsql security invoker set search_path = public
 as $$
 begin
-  if new.active_template_id is not null
-     and new.active_template_id is distinct from old.active_template_id
-     and exists (select 1 from public.templates t where t.id = new.active_template_id and t.archived) then
+  if new.active_template_id is null then
+    return new;
+  end if;
+  -- On UPDATE only a change is checked, so unrelated settings edits are never blocked.
+  if tg_op = 'UPDATE' then
+    if new.active_template_id is not distinct from old.active_template_id then
+      return new;
+    end if;
+  end if;
+  if exists (select 1 from public.templates t where t.id = new.active_template_id and t.archived) then
     raise exception 'active template must not be archived' using errcode = 'check_violation';
   end if;
   return new;
@@ -54,8 +61,13 @@ before update on public.templates
 for each row execute function public.templates_keep_active_unarchived();
 
 create trigger settings_active_template_unarchived
-before update on public.settings
+before insert or update on public.settings
 for each row execute function public.settings_active_template_unarchived();
 
+-- Length in UTF-16 code units, like the kiosk validator and the web form (JavaScript string length): characters
+-- outside the Basic Multilingual Plane (emoji) count twice.
 alter table public.templates
-  add constraint templates_name_length check (char_length(name) between 1 and 60);
+  add constraint templates_name_length check (
+    char_length(name) >= 1
+    and char_length(name) + char_length(regexp_replace(name, '[^\U00010000-\U0010FFFF]', '', 'g')) <= 60
+  );
