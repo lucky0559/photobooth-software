@@ -82,9 +82,22 @@ Steps and checks:
 5. Failure: trigger a failed attempt through the simulation link if offered.
    - [ ] `payment.failed` gets 200, the payment stays `pending`, `last_event` holds it.
 6. Minimum: set the price to ₱20.00 and create a payment.
-   - [ ] PayMongo accepts 2000 centavos for QR Ph.
+   - [ ] PayMongo accepts 2000 centavos for QR Ph. (₱20 is our own minimum, enforced by the settings CHECK and
+     `MIN_AMOUNT_CENTAVOS`; PayMongo's own minimum for QR Ph is not confirmed: note it here if the docs or an error
+     show it: ______)
 7. QR expiry: `paymongo.ts` sets `expiry_seconds = 300` on the payment method.
    - [ ] PayMongo accepts it (an error here shows as "Payments are unavailable" on the kiosk).
+8. Intent retrieve (`cancel-payment` reconciliation, `retrievePaymentIntent` / `intentStatusFrom` in `paymongo.ts`):
+   `GET /v1/payment_intents/{id}` with the secret key.
+   - [ ] The status is at `data.attributes.status`; after a paid simulation it is exactly `succeeded`; before paying
+     it is `awaiting_next_action` (or another non-`succeeded` value). If not, fix `intentStatusFrom` /
+     `INTENT_SUCCEEDED` and the fixture note.
+   - [ ] Lost webhook: temporarily set `PAYMONGO_WEBHOOK_SECRET` to a wrong value, start a paid session on the kiosk,
+     pay through the simulation link, and let the kiosk's payment screen time out (or tap Cancel after paying).
+     The webhook delivery gets 401 and the function log shows `webhook: signature rejected` (one line, no body);
+     the kiosk's cancel still records the payment: `payments.status = 'paid'`, the kiosk proceeds as paid (or, if
+     its cancel landed first, the session is `paid_after_cancel` and shows in Needs attention). Restore the correct
+     secret afterwards.
 
 | Date | PayMongo mode | Check | Result (pass/fail, notes) |
 | --- | --- | --- | --- |
@@ -100,9 +113,11 @@ Evidence: a phone photo or screenshot of the screen, the printed sheet, the rele
 or table rows where named. Never paste keys, passwords or guests' personal data into the notes.
 
 **1. Paid session with a GCash test payment → print + QR → phone download.**
-Do: set a price (e.g. ₱50) in `/admin`, start a session, take the photos, pay with PayMongo's **test simulation
-link** (never scan a test QR with a real wallet: test QR Ph codes are live codes).
-Expected: the kiosk leaves Payment within a few seconds of paying, prints the sheet(s), shows the download QR; the QR
+Do: set a price (e.g. ₱50) in `/admin`, start a session, pay first with PayMongo's **test simulation link** (never
+scan a test QR with a real wallet: test QR Ph codes are live codes), then take the photos (the kiosk asks for payment
+before the camera).
+Expected: the kiosk leaves Payment within a few seconds of paying, goes to capture, prints the sheet(s), shows the
+download QR; the QR
 opens `<web URL>/d/<token>` on the phone and the photo downloads. `/admin` shows the session as completed and the
 payment in Today's money.
 Evidence: printed sheet, phone screenshot of the download page, `/admin` session row, `payments` row (`status = paid`).
@@ -117,13 +132,15 @@ Evidence: start-screen photo, printed sheet, `/admin` session row.
 Do: start a paid session, pay through the simulation link, then immediately tap Cancel (timer around 2:59).
 Expected: either the session continues to print (the payment won the race), or it returns to the start screen and the
 session appears in `/admin` → Needs attention as "Paid after cancel — consider a refund". Never: paid, cancelled and
-not listed.
+not listed. If the kiosk printed, the session ends `completed` (it may show "Paid after cancel" briefly until the kiosk
+syncs) and needs no refund.
 Evidence: what the kiosk did, the Needs attention entry (if any), `sessions.status`.
 
 **4. Unplug Ethernet after paying.**
 Do: pay, then unplug the network before the photo is printed; leave it out for 2–3 minutes; plug it back in.
-Expected: print works and the QR is shown while offline; the photo appears on the download page within 1 minute of
-reconnecting.
+Expected: print works and the QR is shown while offline; the photo appears on the download page within about 10 s of
+Windows reporting the network back (the kiosk retries at once on the browser `online` event), and at the latest
+within about 5 minutes of reconnecting (the retry backoff is capped at 5 minutes).
 Evidence: time of reconnect, time the download page first showed the photo.
 
 **5. Unplug the camera during capture.**
@@ -136,7 +153,11 @@ Evidence: photo of the error screen, note whether the same session continued.
 Do: remove the paper (or open the tray) and run a session.
 Expected: `Printing failed. Please call staff — your photo is still available through the QR code.` with the QR; the
 photo downloads on the phone; `/admin` records the print error.
-Evidence: photo of the screen, phone screenshot, `/admin` session row.
+Note: silent printing may **not** report out-of-paper: Chromium's print callback only says whether the job was handed
+to the Windows spooler ("spooled"), so the kiosk may show the normal Delivery screen while the printer blinks. This
+row records what staff actually see: the kiosk screen, the printer's own light/display, and the Windows print queue.
+If the kiosk shows no error, staff must watch the printer; note it as a known limitation, not a failure of this row.
+Evidence: photo of the screen, the printer's display, phone screenshot, `/admin` session row.
 
 **7. Strip prints two identical strips; 4R prints full bleed.**
 Do: one session with a strip template (600×1800), one with a 4R template (1200×1800); cutter on for the strip if the
@@ -226,9 +247,10 @@ Evidence: screenshots of the warning and the Details tab.
 
 **18. "Out of service" and "This kiosk is not configured" screens.**
 Do: (a) see row 15 for `Out of service. Please call staff.`; (b) build an installer with `VITE_SUPABASE_URL` empty in
-`apps\kiosk\.env`, install it on a test PC (not the event kiosk), launch it.
-Expected: (b) shows `This kiosk is not configured. Please call staff.` and nothing else; reinstalling the correct
-build fixes it.
+`apps\kiosk\.env`, install it on a test PC (not the event kiosk), launch it; (c) the same with `VITE_WEB_BASE_URL`
+empty (or a relative value such as `/d`).
+Expected: (b) and (c) show `This kiosk is not configured. Please call staff.` listing the variable name
+(`VITE_SUPABASE_URL` / `VITE_WEB_BASE_URL`), never a value, and nothing else; reinstalling the correct build fixes it.
 Evidence: photo of the screen.
 
 **19. Download page from a phone on mobile data.**
@@ -261,6 +283,26 @@ Expected: no crash, freeze or memory growth that slows the kiosk; every complete
 downloadable; the money total equals the paid test payments; Needs attention lists only the deliberate cancels.
 Evidence: session count, Task Manager memory at the start and end, any errors seen.
 
+**24. Webhook health and lost-webhook reconciliation.**
+Do: (a) on the test project, send one webhook call with a wrong signature, e.g.
+`curl -X POST https://<project-ref>.supabase.co/functions/v1/paymongo-webhook -H 'Paymongo-Signature: t=1,te=00,li=' -d '{}'`;
+(b) disable the webhook in the PayMongo dashboard (test mode), start a paid session on the kiosk, pay through the
+simulation link and leave the payment screen until it times out (3 minutes); re-enable the webhook afterwards.
+Expected: (a) the call gets 401 and the `paymongo-webhook` logs show exactly `webhook: signature rejected` (no body or
+headers); (b) the kiosk's timeout cancel finds the intent `succeeded`: the payment is recorded `paid` (with the session
+`paid` and the kiosk continuing to capture, or `paid_after_cancel` in Needs attention if the cancel won), and it counts
+in Today's money. Follow DEPLOY.md G.7a.
+Evidence: the log line, the `payments` row, what the kiosk did.
+
+**25. Refund bookkeeping and kiosk account switch.**
+Do: (a) with a `paid_after_cancel` session from row 3 or 24, follow DEPLOY.md G.3: find it in PayMongo by its intent
+id, refund it, press Mark refunded, then Undo and Mark refunded again; (b) on the kiosk, Setup → **Sign out and use
+another account** → sign in with the admin account, then with the kiosk account.
+Expected: (a) the intent id in `/admin` matches the PayMongo payment; Mark refunded moves the row to "Refunded (last
+20)", Undo brings it back; (b) the admin account is refused with `This account is not a kiosk account.`; the kiosk
+account signs in and sessions work.
+Evidence: screenshots of `/admin` and the Setup message.
+
 ### Results
 
 | # | Date | Tester | Pass/fail | Notes |
@@ -288,3 +330,5 @@ Evidence: session count, Task Manager memory at the start and end, any errors se
 | 21 |  |  |  |  |
 | 22 |  |  |  |  |
 | 23 |  |  |  |  |
+| 24 |  |  |  |  |
+| 25 |  |  |  |  |

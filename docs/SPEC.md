@@ -35,7 +35,8 @@ No cash, coin, or bill acceptor. No hardware is sold with the software.
 ## Money
 
 - All amounts stored as integer centavos.
-- Session price range: ₱20.00–₱1,000.00 (PayMongo minimum is ₱20; confirm in PayMongo docs at build time).
+- Session price range: ₱20.00–₱1,000.00. The ₱20 minimum is per our own validation; PayMongo's own minimum must be
+  confirmed in the real test run (ACCEPTANCE.md, Task 5).
 - Default price ₱150.00.
 
 ## Client PC requirements

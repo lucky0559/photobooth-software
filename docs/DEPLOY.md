@@ -82,13 +82,15 @@ Three functions: `create-payment` and `cancel-payment` (called by the kiosk with
 
    | Variable | Read by | Value |
    | --- | --- | --- |
-   | `PAYMONGO_SECRET_KEY` | `create-payment` | `sk_test_…` (testing) / `sk_live_…` (production) |
+   | `PAYMONGO_SECRET_KEY` | `create-payment`, `cancel-payment` | `sk_test_…` (testing) / `sk_live_…` (production) |
    | `PAYMONGO_WEBHOOK_SECRET` | `paymongo-webhook` | The webhook signing secret from section C |
    | `PAYMONGO_MODE` | `paymongo-webhook` | `test` or `live`; anything else makes every webhook call fail. It picks which signature (`te` or `li`) is checked, so it must match the keys. |
-   | `PAYMONGO_API_BASE` | `create-payment` | **Leave unset** on hosted projects (defaults to `https://api.paymongo.com`; only the local stub tests set it). |
+   | `PAYMONGO_API_BASE` | `create-payment`, `cancel-payment` | **Leave unset** on hosted projects (defaults to `https://api.paymongo.com`; only the local stub tests set it). |
    | `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` | all three | Provided by the platform. Do not set them. |
 
-   `cancel-payment` reads only the platform variables. Set the first two now (the webhook secret comes in section C):
+   `cancel-payment` uses the secret key to look up the payment intent before cancelling (a payment whose webhook was
+   lost is then still recorded as paid; see G.7a). If that lookup fails it cancels as before. Set the first two now
+   (the webhook secret comes in section C):
 
    ```sh
    supabase secrets set PAYMONGO_SECRET_KEY=sk_test_xxx PAYMONGO_MODE=test
@@ -235,8 +237,10 @@ No app icon is configured yet: the installer and the exe use Electron's default 
    ```
 
    `VITE_WEB_BASE_URL` is the deployed web app (section D) without a trailing path; the download QR points at
-   `<VITE_WEB_BASE_URL>/d/<token>`. Never put the service-role key here: everything in this file is readable inside the
-   installed app.
+   `<VITE_WEB_BASE_URL>/d/<token>`. All three `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` and `VITE_WEB_BASE_URL`
+   are required: if any is missing or invalid (for `VITE_WEB_BASE_URL`: not an absolute `http(s)://` URL) the installed
+   kiosk shows "This kiosk is not configured. Please call staff." with the variable names, instead of running without
+   a download QR. Never put the service-role key here: everything in this file is readable inside the installed app.
 5. Build the installer:
 
    ```powershell
@@ -264,7 +268,7 @@ No app icon is configured yet: the installer and the exe use Electron's default 
      the kiosk within about 1 minute while it is on the start screen.
    - Reopen Setup later: on the start screen tap the top-left corner 5 times within 3 seconds, then enter the PIN.
    - "This kiosk is not configured. Please call staff." on launch means step 4's `.env` was missing or invalid when
-     the installer was built: fix it and rebuild.
+     the installer was built (the screen lists the variable names, never their values): fix it and rebuild.
 8. Windows auto-start: press `Win+R`, type `shell:startup`, Enter, and copy the "Photobooth Kiosk" desktop shortcut
    into that folder (this is the Startup folder of the signed-in Windows user, which is what the kiosk needs). With
    the single-instance lock, a second launch only brings the running kiosk to the front.
@@ -313,10 +317,24 @@ None of this is done by the app; set it up once on the kiosk PC and re-run the A
 | `Payments are unavailable right now. Please call staff.` | Payment | The kiosk could not create the PayMongo QR (no internet, PayMongo error, or wrong Edge Function secrets). | Check the internet. If online, check Supabase → Edge Functions → `create-payment` logs. Switch the admin to free mode if you must keep the booth running. |
 | `We couldn't save your photo. Please call staff.` | After Review | The photo could not be composed or saved/queued on the PC (disk full, data folder unwritable). The guest has paid. | Tap Try again. If it fails again, note the time, refund the guest if they paid (G.3), restart the kiosk and check free disk space. |
 | `Printing failed. Please call staff — your photo is still available through the QR code.` | Delivery | The printer reported an error (paper, ribbon, offline, wrong printer). The photo is saved and uploads as usual. | Fix the printer. There is no reprint in the lean MVP: the guest uses the QR download; print the downloaded file manually if you want to give them a copy. |
-| `This kiosk is not configured. Please call staff.` | Instead of the app, at launch | The installer was built without valid `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` / `VITE_WEB_BASE_URL`. | Rebuild the installer with a correct `apps\kiosk\.env` (E.4) and reinstall. |
+| `This kiosk is not configured. Please call staff.` | Instead of the app, at launch | The installer was built without valid `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` / `VITE_WEB_BASE_URL` (all three are required; the screen lists which). | Rebuild the installer with a correct `apps\kiosk\.env` (E.4) and reinstall. |
 
 Other start-screen banners: "Setup needed: no active template" (activate a template in `/admin`), "Offline — payments
 unavailable" (paid mode with no internet; free mode keeps working offline).
+
+**Offline free mode uses the cached settings.** The kiosk keeps the last price / free-mode setting it fetched. While it
+is offline it keeps running in free mode with that cached setting until it reconnects; turning free mode **off** in
+`/admin` only reaches the kiosk once it is back online (within about a minute on the start screen). If you must stop
+free sessions on an offline kiosk, do it at the kiosk (switch it off or put it out of reach).
+
+Staff notices at the top of **Setup** (corner taps + PIN), besides the file notices in G.5:
+
+- `N saved uploads are failing since <time>: <last error>`: these sessions or photos have failed to reach Supabase at
+  least 10 times, or for more than an hour. The kiosk keeps retrying (every 5 minutes at most, and right away when the
+  network comes back). A network error ("Failed to fetch") usually clears on its own once the internet is back. An
+  error that mentions row-level security, a permission or a JWT means the kiosk account is wrong or was banned (G.7):
+  sign in again with the right kiosk account. Anything else: note the error text and send it to the developer; do
+  not delete `queue.json`.
 
 ### G.3 Refunds
 
@@ -328,9 +346,23 @@ The admin dashboard's **Needs attention** list shows paid sessions that need a d
   guest who left during an outage, or a crash. An offline kiosk's sessions can also show here until it reconnects and
   syncs, so wait for the kiosk to be online before refunding.
 
-To refund: PayMongo dashboard → Payments → find the payment (amount and time; the session row in `/admin` shows the
-time) → Refund. Note the refund in your own records; the app has no "resolved" state, so refunded sessions stay in
-the list (the newest 100 are shown).
+Each row shows the amount, when it was paid (Manila time), the label, the PayMongo **payment intent id** (`pi_…`) and
+when the session started. To refund:
+
+1. PayMongo dashboard → Payments → search for the payment intent id shown in the row (⚠️ the exact search box / menu
+   wording in the PayMongo dashboard is not verified; if search by `pi_…` is not offered, match amount and paid time,
+   and confirm the intent id on the payment's details page) → Refund.
+2. Back in `/admin` → **Needs attention** → that row → **Mark refunded** → **Yes, mark refunded**. The row leaves the
+   list.
+3. Pressed it on the wrong row? Open **Refunded (last 20)** under the list and press **Undo**; the row comes back.
+
+Mark refunded only records that you refunded it; it does not move any money. The list shows the newest 100 unrefunded
+rows and says "Showing the newest 100 of N" when there are more.
+
+**A `paid_after_cancel` session that later shows `Completed` was served.** The kiosk's cancel can reach the server
+while the guest pays at the last second; the kiosk then sees the payment, takes the photos and prints. Such a session
+first appears as "Paid after cancel" and leaves the list once the kiosk syncs it as completed (its status in Recent
+sessions becomes Completed). No refund is needed for it.
 
 The dashboard's money totals come from the `payments` table (`status = 'paid'`, by payment time in Asia/Manila) and
 include paid-after-cancel payments, because the money was received.
@@ -374,12 +406,53 @@ Do not edit these files while the kiosk runs.
 ### G.7 Rotating the kiosk password
 
 1. Dashboard → Authentication → Users → the kiosk user → change its password.
-2. On the kiosk: open Setup (corner taps + PIN), sign in with the new password, Done.
+2. On the kiosk: open Setup (corner taps + PIN), Next, press **Sign out and use another account**, sign in with the
+   new password, Done. (Setup skips the sign-in step while a login exists; the button ends this PC's login only.)
 
-Changing the password does not instantly end a login that already exists on a lost or stolen kiosk PC. To cut such a
-PC off: delete that kiosk user in the dashboard, create a new one (A.5), give it the `kiosk` row (A.6, the old row
-goes away with the deleted user), and sign in with it on the remaining kiosk. Rotate the admin password the same way in
-the dashboard.
+The kiosk accepts only accounts whose `profiles` row says `kiosk`. Signing in with the admin account (or any other)
+shows "This account is not a kiosk account." and stays signed out.
+
+**Never delete a kiosk user.** Every session row points at its kiosk user, so deleting a kiosk that has served even one
+guest fails, and it would orphan the sales history. Changing the password does not end a login that already exists on
+a lost or stolen kiosk PC. To cut such a PC off:
+
+1. **Ban the user.** Supabase dashboard → Authentication → Users → the kiosk user → ⚠️ the user's actions menu
+   ("Ban user"; wording not verified, it may differ in your dashboard version). Or with the service-role key, from a
+   trusted machine (never the kiosk):
+
+   ```js
+   await supabase.auth.admin.updateUserById('<kiosk user id>', { ban_duration: '876000h' }); // ~100 years
+   ```
+
+   Checked on the local stack: after the ban the user cannot sign in, its refresh token is refused ("User Banned"),
+   and Auth refuses its current access token. That access token can still reach the database until it expires (the
+   project's JWT expiry, 1 hour by default), so the stolen PC is fully cut off within that time.
+2. **Sign out all its sessions** (removes its refresh tokens): Dashboard → SQL editor:
+
+   ```sql
+   delete from auth.sessions where user_id = '<kiosk user id>';
+   ```
+
+3. **Replacement kiosk:** create a new kiosk user (A.5) and its `profiles` row with role `kiosk` (A.6), then on the
+   remaining kiosk PC: Setup → **Sign out and use another account** → sign in with the new user.
+
+Keep the banned user: its sessions and payments stay in the dashboard. Rotate the admin password in the dashboard
+(Authentication → Users → change password); for a leaked admin login, ban and replace it the same way.
+
+### G.7a Webhook health check
+
+The PayMongo webhook is how a payment normally becomes `paid`. If its secret or mode is wrong (`PAYMONGO_WEBHOOK_SECRET`
+rotated, `PAYMONGO_MODE` not matching the keys) PayMongo's deliveries are all refused. The kiosk then still records
+the money when it gives up waiting: `cancel-payment` asks PayMongo for the payment intent first and marks it paid if it
+succeeded. Do not rely on that alone. Check after every deploy or secret change, and weekly during events:
+
+1. Supabase dashboard → Edge Functions → `paymongo-webhook` → Logs: search for `webhook: signature rejected`. Any hit
+   after a real payment means the secret or mode is wrong (or someone is sending fake calls): re-check section C step
+   3 and `PAYMONGO_MODE`, then redeploy the secret.
+2. PayMongo dashboard → Developers → Webhooks → your webhook → recent deliveries (⚠️ menu wording not verified): they
+   should be 2xx. 401s mean the same as step 1; failed connections mean the URL is wrong or the function is down.
+3. `cancel-payment` logs `cancel-payment: PayMongo intent lookup failed; cancelling without it` when it could not reach
+   PayMongo or the secret key is wrong; a few during an outage are expected, constant ones are not.
 
 ### G.8 Local development
 

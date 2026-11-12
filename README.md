@@ -109,7 +109,8 @@ Hobby (non-commercial use only) and PayMongo test keys. Taking real money needs 
 - **Real printer:** silent printing, 4x6 borderless output and strip cutting are untested on the client's printer
   (ACCEPTANCE.md, Task 9 and rows 6–7).
 - **Real PayMongo:** every PayMongo response and webhook shape is synthetic (from the docs); signature encoding, QR
-  format, the ₱20 minimum and `expiry_seconds` are unverified until the Task 5 run in ACCEPTANCE.md.
+  format, PayMongo's own minimum (₱20 is our own validation), `expiry_seconds` and the intent-retrieve status used by
+  `cancel-payment` are unverified until the Task 5 run in ACCEPTANCE.md.
 - **Windows installer:** the NSIS installer has been cross-built on macOS only (it built, with icon/version metadata),
   never installed or run on Windows. It is unsigned (SmartScreen warning) and has no auto-update.
 - **Hosted Edge Function bundle:** `supabase functions deploy` has not been run against a hosted project; only local
@@ -119,4 +120,7 @@ Hobby (non-commercial use only) and PayMongo test keys. Taking real money needs 
 - **CSP:** uses `script-src 'unsafe-inline'` instead of per-request nonces (nonce CSP is a possible hardening pass).
 - **Template archive vs set-active race:** handled by a database trigger (migration
   `20261111000004_template_integrity.sql`), not in the app.
-- No reprint and no "resolved" state for refunds in the admin (lean MVP scope).
+- No reprint (lean MVP scope). Refunds are made in the PayMongo dashboard; the admin only records them ("Mark
+  refunded", DEPLOY.md G.3).
+- **Out-of-paper:** silent printing may not report it (Chromium only reports that the job was spooled); staff watch the
+  printer (ACCEPTANCE.md row 6).

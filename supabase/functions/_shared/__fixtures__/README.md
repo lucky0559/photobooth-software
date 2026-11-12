@@ -15,6 +15,7 @@ test key) could not be done. These files were written by hand from the published
 | --- | --- | --- |
 | `attach-qrph.json` | `POST /v1/payment_intents/{id}/attach` response for a `qrph` payment method | `data.id` (intent id), `data.attributes.next_action.code.image_url` (QR image) |
 | `webhook-payment-paid.json` | Body of a `payment.paid` webhook delivery | `data.attributes.type`, `data.attributes.data.attributes.payment_intent_id`, `data.attributes.data.attributes.amount` |
+| (no file; the stub reuses `attach-qrph.json`) | `GET /v1/payment_intents/{id}` response (cancel-payment reconciliation) | `data.id`, `data.attributes.status` (`succeeded` = paid) |
 
 Guessed (documented nowhere we could read): `next_action.type` (`consume_qr`), the keys of `next_action.code` other
 than `image_url`, and whether `image_url` carries the `data:image/png;base64,` prefix (the docs call it a "Base64
