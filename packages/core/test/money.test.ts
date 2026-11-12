@@ -50,6 +50,22 @@ describe('pesosToCentavos', () => {
     expect(pesosToCentavos('1234,567')).toBeNull();
     expect(pesosToCentavos('1,234.5,6')).toBeNull();
     expect(pesosToCentavos('1,,234')).toBeNull();
+    expect(pesosToCentavos('0,100')).toBeNull();
+    expect(pesosToCentavos('00,100')).toBeNull();
+  });
+  it('returns null instead of a rounded wrong value for huge inputs', () => {
+    expect(pesosToCentavos('99999999999999999999')).toBeNull();
+    // 9007199254740991 centavos is Number.MAX_SAFE_INTEGER; 14 whole-peso digits are over the cap anyway.
+    expect(pesosToCentavos('90071992547409.91')).toBeNull();
+    expect(pesosToCentavos('90071992547409.92')).toBeNull();
+    expect(pesosToCentavos('99,999,999,999,999')).toBeNull();
+    // Largest accepted: 13 whole-peso digits.
+    expect(pesosToCentavos('9999999999999.99')).toBe(999999999999999);
+    expect(pesosToCentavos('9,999,999,999,999.99')).toBe(999999999999999);
+    expect(pesosToCentavos('12,345,678.9')).toBe(1234567890);
+    for (const s of ['9999999999999.99', '12,345,678.9', '1,234']) {
+      expect(Number.isSafeInteger(pesosToCentavos(s))).toBe(true);
+    }
   });
   it('rejects whitespace inside the number', () => {
     expect(pesosToCentavos('1 234')).toBeNull();
