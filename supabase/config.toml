@@ -401,6 +401,11 @@ deno_version = 2
 # [edge_runtime.secrets]
 # secret_key = "env(SECRET_VALUE)"
 
+# PayMongo calls the webhook without a Supabase JWT; the function verifies the Paymongo-Signature instead.
+# (Equivalent to `supabase functions deploy paymongo-webhook --no-verify-jwt`.)
+[functions.paymongo-webhook]
+verify_jwt = false
+
 [analytics]
 enabled = true
 port = 54327
