@@ -35,7 +35,7 @@ Check current pricing at migration time; plans change.
 ## Migration checklist (testing → production)
 
 1. Create a new Supabase Pro project (do not upgrade the test project in place; keep test data separate).
-2. `supabase link --project-ref <prod-ref>` → `supabase db push`.
+2. `supabase link --project-ref <prod-ref>` → `supabase db push --remote` (CLI 3.x pushes to the local stack without `--remote`; see `docs/DEPLOY.md` section A).
 3. Create production admin and kiosk users and their `profiles` rows.
 4. `supabase secrets set PAYMONGO_SECRET_KEY=<live> PAYMONGO_WEBHOOK_SECRET=<live> PAYMONGO_MODE=live` (+ `RESEND_API_KEY`, `EMAIL_FROM`, `CRON_SECRET` for full scope).
 5. Deploy all Edge Functions; register the live PayMongo webhook to the production URL.
