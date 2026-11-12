@@ -36,3 +36,18 @@ Started by Task 5; later tasks extend it.
 - Unit tests: `cd supabase/functions && deno task test`.
 - Integration tests (local stack running): `cd supabase/functions && deno task test:integration`. It syncs core,
   starts the PayMongo stub on :54399 and `functions serve`, runs `_integration/`, and stops both.
+
+## Admin web (`apps/web`)
+
+- Env vars (Vercel project settings; locally `apps/web/.env.local`, copied from `apps/web/.env.example`):
+  - `NEXT_PUBLIC_SUPABASE_URL`: the project URL. Also put into the Content-Security-Policy at build time, so redeploy
+    after changing it.
+  - `NEXT_PUBLIC_SUPABASE_ANON_KEY`: the anon / publishable key (browser-safe; RLS enforces admin-only access).
+  - `SUPABASE_SERVICE_ROLE_KEY`: server only, never `NEXT_PUBLIC_`. The Task 12 pages do not use it; leave it unset
+    in Vercel until a feature needs it.
+- Vercel Hobby (free tier, testing only): set the project root to `apps/web`; the build is `next build` with the
+  pnpm workspace install. Server Action bodies are capped at 11 MB in `next.config.ts` for 10 MB template uploads, but
+  Vercel Functions accept request bodies of about 4.5 MB, so larger templates fail on Vercel with a platform error
+  until uploads go directly to Storage (signed upload URL). Local and self-hosted `next start` accept the full 10 MB.
+- Admin accounts: create the user in Supabase Auth, then `insert into profiles (user_id, role) values ('<id>', 'admin')`.
+- Local e2e: `pnpm --filter web e2e` (local Supabase running; builds and serves on :3100, restores the seeded data).
