@@ -372,12 +372,149 @@ select[aria-invalid='true'] {
   gap: 8px;
 }
 
-.dash-links {
-  display: grid;
-  gap: 12px;
+/* ---- Dashboard ---- */
+
+.today-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 40px;
+  margin: 0;
+}
+
+.today-stats dt {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.today-stats dd {
+  margin: 0;
+  font-family: 'Bungee', 'Outfit', sans-serif;
+  font-size: 2rem;
+  line-height: 1.2;
+}
+
+.attention-list {
   list-style: none;
+  margin: 0;
   padding: 0;
-  margin: 0 0 24px;
+  display: grid;
+  gap: 10px;
+}
+
+.attention-list li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  padding: 10px 12px;
+  border: 2px solid var(--error);
+  border-radius: 10px;
+}
+
+.attention-time,
+.attention-amount {
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.attention-label {
+  color: var(--error);
+  font-weight: 600;
+}
+
+.table-wrap {
+  overflow-x: auto;
+  background: #fff;
+  border: 2px solid var(--ink);
+  border-radius: var(--radius);
+}
+
+.sessions {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.95rem;
+}
+
+.sessions th,
+.sessions td {
+  text-align: left;
+  vertical-align: top;
+  padding: 10px 12px;
+  border-bottom: 1px solid #e6e1d6;
+}
+
+.sessions thead th {
+  border-bottom: 2px solid var(--ink);
+  white-space: nowrap;
+}
+
+.sessions tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.nowrap {
+  white-space: nowrap;
+}
+
+.print-error {
+  min-width: 12rem;
+  overflow-wrap: anywhere;
+}
+
+.phone-label {
+  display: none;
+}
+
+/* Phone: each session is a two-line block (time + amount, then status and any print error). */
+@media (max-width: 639px) {
+  .sessions thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+  }
+  .sessions,
+  .sessions tbody {
+    display: block;
+  }
+  .sessions tr {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 2px 12px;
+    padding: 10px 12px;
+    border-bottom: 1px solid #e6e1d6;
+  }
+  .sessions tbody tr:last-child {
+    border-bottom: 0;
+  }
+  .sessions td {
+    display: block;
+    padding: 0;
+    border: 0;
+  }
+  .sessions .col-time,
+  .sessions .col-amount {
+    font-weight: 700;
+  }
+  .sessions .col-amount {
+    text-align: right;
+  }
+  .sessions .col-status {
+    grid-column: 1 / -1;
+    color: var(--muted);
+  }
+  .sessions .print-error {
+    grid-column: 1 / -1;
+    min-width: 0;
+    color: var(--error);
+  }
+  .sessions .print-error-none {
+    display: none;
+  }
+  .phone-label {
+    display: inline;
+    font-weight: 600;
+  }
 }
 
 @media (prefers-reduced-motion: no-preference) {
