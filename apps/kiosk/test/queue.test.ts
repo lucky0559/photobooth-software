@@ -76,6 +76,56 @@ describe('startQueueRunner', () => {
   });
 });
 
+describe('startQueueRunner: online kick (R22 / M4)', () => {
+  it('the browser `online` event runs the queue at once, including jobs still in backoff', async () => {
+    const events = new EventTarget();
+    const later = upsert({ attempts: 6, nextAttemptAt: Date.now() + 300_000, lastError: 'offline' });
+    const bridge = {
+      queueList: vi.fn(async () => [later]),
+      queueApply: vi.fn(async () => {}),
+      readPhoto,
+    };
+    const api = fakeApi();
+    const runner = startQueueRunner(api, bridge, 60_000, undefined, events);
+    await new Promise((r) => setTimeout(r, 10));
+    // The first (timer) run respects the backoff.
+    expect(api.upsertSession).not.toHaveBeenCalled();
+    events.dispatchEvent(new Event('online'));
+    await new Promise((r) => setTimeout(r, 10));
+    expect(api.upsertSession).toHaveBeenCalledTimes(1);
+    expect(bridge.queueApply).toHaveBeenCalledWith({ done: ['j1'], failed: [] });
+    runner.stop();
+    // A stopped runner no longer listens.
+    events.dispatchEvent(new Event('online'));
+    await new Promise((r) => setTimeout(r, 10));
+    expect(bridge.queueList).toHaveBeenCalledTimes(2);
+  });
+
+  it('a plain kick still respects the backoff', async () => {
+    const later = upsert({ attempts: 6, nextAttemptAt: Date.now() + 300_000 });
+    const bridge = { queueList: vi.fn(async () => [later]), queueApply: vi.fn(async () => {}), readPhoto };
+    const api = fakeApi();
+    const runner = startQueueRunner(api, bridge, 60_000);
+    runner.kick();
+    await new Promise((r) => setTimeout(r, 10));
+    expect(api.upsertSession).not.toHaveBeenCalled();
+    runner.stop();
+  });
+});
+
+describe('processQueue: ignoreBackoff', () => {
+  it('runs jobs that are not yet due, keeping the per-session order rules', async () => {
+    const api = fakeApi();
+    const r = await processQueue([upsert({ nextAttemptAt: 10_000 }), upload({ nextAttemptAt: 10_000 })], {
+      api,
+      readPhoto,
+      now: 1,
+      ignoreBackoff: true,
+    });
+    expect(r.done).toEqual(['j1', 'j2']);
+  });
+});
+
 describe('nextAttemptAt', () => {
   it('backoff doubles from 5s and caps at 5 minutes', () => {
     expect(nextAttemptAt(0, 0)).toBe(5000);

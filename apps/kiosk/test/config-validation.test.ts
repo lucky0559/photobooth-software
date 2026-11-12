@@ -153,6 +153,7 @@ describe('toConfigView (what getConfig sends to the renderer)', () => {
       pinSet: true,
       settingsUnreadable: false,
       queueUnavailable: false,
+      syncFailures: { failingCount: 0, oldestFailingSince: null, lastError: null },
     });
     expect('pinHash' in view).toBe(false);
     expect(JSON.stringify(view)).not.toContain('scrypt');

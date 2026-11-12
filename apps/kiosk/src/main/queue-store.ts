@@ -1,6 +1,15 @@
 import type { SessionSync } from '@pb/core';
 import { TEMPLATE_ID_PATTERN } from '../shared/bridge';
-import { MAX_PRINT_ERROR_CHARS, truncatePrintError, UUID_PATTERN, type QueueJob, type QueueResult } from '../shared/queue';
+import {
+  FAILING_AFTER_MS,
+  FAILING_MIN_ATTEMPTS,
+  MAX_PRINT_ERROR_CHARS,
+  truncatePrintError,
+  UUID_PATTERN,
+  type QueueJob,
+  type QueueResult,
+  type SyncFailureStatus,
+} from '../shared/queue';
 import { photoPath, type CompletedUpload } from './photos';
 
 /** Shape of `<userData>/queue.json`. */
@@ -49,7 +58,7 @@ function validateRow(r: unknown): SessionSync {
 function validateJob(
   j: unknown,
   photosDir: string,
-  retry: Pick<QueueJob, 'attempts' | 'nextAttemptAt' | 'lastError'>,
+  retry: Pick<QueueJob, 'attempts' | 'nextAttemptAt' | 'lastError' | 'firstFailedAt'>,
   path: 'match' | 'derive',
 ): QueueJob {
   if (!isObject(j) || !isUuid(j.id)) fail('job');
@@ -71,12 +80,14 @@ export function validateQueueJobs(input: unknown, photosDir: string): QueueJob[]
 
 function storedJob(j: unknown, photosDir: string): QueueJob | null {
   if (!isObject(j)) return null;
-  const { attempts, nextAttemptAt, lastError } = j;
+  const { attempts, nextAttemptAt, lastError, firstFailedAt } = j;
   if (typeof attempts !== 'number' || !Number.isInteger(attempts) || attempts < 0) return null;
   if (typeof nextAttemptAt !== 'number' || !Number.isFinite(nextAttemptAt)) return null;
   if (lastError !== null && typeof lastError !== 'string') return null;
+  // Optional (older builds never wrote it): a bad value is ignored, never a reason to drop the job.
+  const first = typeof firstFailedAt === 'number' && Number.isFinite(firstFailedAt) ? { firstFailedAt } : {};
   try {
-    return validateJob(j, photosDir, { attempts, nextAttemptAt, lastError }, 'derive');
+    return validateJob(j, photosDir, { attempts, nextAttemptAt, lastError, ...first }, 'derive');
   } catch {
     return null;
   }
@@ -135,7 +146,38 @@ export function applyResult(q: QueueFile, r: QueueResult, now: number): QueueFil
       continue;
     }
     const f = failed.get(job.id);
-    jobs.push(f ? { ...job, attempts: job.attempts + 1, nextAttemptAt: f.nextAttemptAt, lastError: f.error } : job);
+    jobs.push(
+      f
+        ? {
+            ...job,
+            attempts: job.attempts + 1,
+            nextAttemptAt: f.nextAttemptAt,
+            lastError: f.error,
+            firstFailedAt: job.firstFailedAt ?? now,
+          }
+        : job,
+    );
   }
   return { jobs, completedUploads };
+}
+
+/**
+ * Jobs that keep failing (R22): at least FAILING_MIN_ATTEMPTS attempts, or failing for more than FAILING_AFTER_MS
+ * since their first failure. A job from an older queue.json without `firstFailedAt` counts by attempts only.
+ */
+export function syncFailureStatus(jobs: readonly QueueJob[], now: number): SyncFailureStatus {
+  const failing = jobs.filter(
+    (j) =>
+      j.attempts > 0 &&
+      (j.attempts >= FAILING_MIN_ATTEMPTS || (j.firstFailedAt !== undefined && now - j.firstFailedAt > FAILING_AFTER_MS)),
+  );
+  if (failing.length === 0) return { failingCount: 0, oldestFailingSince: null, lastError: null };
+  const starts = failing.map((j) => j.firstFailedAt).filter((t): t is number => t !== undefined);
+  // The latest scheduled retry belongs to the most recent failure.
+  const latest = failing.reduce((a, b) => (b.nextAttemptAt > a.nextAttemptAt ? b : a));
+  return {
+    failingCount: failing.length,
+    oldestFailingSince: starts.length > 0 ? Math.min(...starts) : null,
+    lastError: latest.lastError,
+  };
 }

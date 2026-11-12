@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { describe, expect, it, vi } from 'vitest';
+import { NOT_KIOSK_ACCOUNT } from '../src/renderer/src/api/kiosk-api';
 import { SupabaseKioskApi } from '../src/renderer/src/api/supabase-api';
 
 /** Records the call chain of a supabase-js query builder and resolves to `result`. */
@@ -8,7 +9,7 @@ function query(result: unknown) {
   const builder: Record<string, unknown> = {
     then: (resolve: (v: unknown) => void) => resolve(result),
   };
-  for (const m of ['select', 'eq', 'single', 'upsert', 'update']) {
+  for (const m of ['select', 'eq', 'single', 'maybeSingle', 'upsert', 'update']) {
     builder[m] = (...args: unknown[]) => {
       calls.push([m, args]);
       return builder;
@@ -133,5 +134,70 @@ describe('SupabaseKioskApi', () => {
       ['eq', ['id', 'p1']],
       ['single', []],
     ]);
+  });
+});
+
+// R21: an admin (or any non-kiosk) account signed in on the kiosk would fail every write forever.
+describe('SupabaseKioskApi sign-in role check', () => {
+  function authClient(profile: { data: unknown; error: unknown }, signInError: unknown = null) {
+    const q = query(profile);
+    const signInWithPassword = vi.fn(async () => ({
+      data: signInError ? { user: null, session: null } : { user: { id: 'u1' }, session: {} },
+      error: signInError,
+    }));
+    const signOut = vi.fn(async (_o?: unknown) => ({ error: null }));
+    const order: string[] = [];
+    const db = {
+      auth: { signInWithPassword, signOut },
+      from: (t: string) => {
+        order.push(`from:${t}`);
+        return q.builder;
+      },
+    } as unknown as SupabaseClient;
+    return { db, q, signInWithPassword, signOut, order };
+  }
+
+  it('a kiosk account signs in and stays signed in', async () => {
+    const c = authClient({ data: { role: 'kiosk' }, error: null });
+    await new SupabaseKioskApi(c.db).signIn('kiosk@x', 'pw');
+    expect(c.signInWithPassword).toHaveBeenCalledWith({ email: 'kiosk@x', password: 'pw' });
+    expect(c.order).toEqual(['from:profiles']);
+    expect(c.q.calls).toEqual([
+      ['select', ['role']],
+      ['eq', ['user_id', 'u1']],
+      ['maybeSingle', []],
+    ]);
+    expect(c.signOut).not.toHaveBeenCalled();
+  });
+
+  it('an admin account is signed out locally with the fixed error', async () => {
+    const c = authClient({ data: { role: 'admin' }, error: null });
+    await expect(new SupabaseKioskApi(c.db).signIn('admin@x', 'pw')).rejects.toThrow(NOT_KIOSK_ACCOUNT);
+    expect(NOT_KIOSK_ACCOUNT).toBe('This account is not a kiosk account.');
+    expect(c.signOut).toHaveBeenCalledWith({ scope: 'local' });
+  });
+
+  it('an account without a profile row is not a kiosk account either', async () => {
+    const c = authClient({ data: null, error: null });
+    await expect(new SupabaseKioskApi(c.db).signIn('nobody@x', 'pw')).rejects.toThrow(NOT_KIOSK_ACCOUNT);
+    expect(c.signOut).toHaveBeenCalledWith({ scope: 'local' });
+  });
+
+  it('a profile read error signs out and rethrows (never a half-checked session)', async () => {
+    const c = authClient({ data: null, error: new Error('network down') });
+    await expect(new SupabaseKioskApi(c.db).signIn('kiosk@x', 'pw')).rejects.toThrow('network down');
+    expect(c.signOut).toHaveBeenCalledWith({ scope: 'local' });
+  });
+
+  it('a failed sign-in never reads the profile', async () => {
+    const c = authClient({ data: { role: 'kiosk' }, error: null }, new Error('Invalid login credentials'));
+    await expect(new SupabaseKioskApi(c.db).signIn('kiosk@x', 'bad')).rejects.toThrow('Invalid login credentials');
+    expect(c.order).toEqual([]);
+  });
+
+  it('signOut ends only this device session (local scope)', async () => {
+    const c = authClient({ data: null, error: null });
+    await new SupabaseKioskApi(c.db).signOut();
+    expect(c.signOut).toHaveBeenCalledWith({ scope: 'local' });
   });
 });

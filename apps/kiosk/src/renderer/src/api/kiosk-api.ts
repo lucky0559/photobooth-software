@@ -16,4 +16,9 @@ export interface KioskApi {
   upsertSession(row: SessionSync): Promise<void>;
   /** Uploads `<sessionId>.jpg` and records it on the session; resolves to the storage path. */
   uploadPhoto(sessionId: string, jpeg: ArrayBuffer): Promise<string>;
+  /** Ends this device's session only (local scope), e.g. to switch the kiosk to another account from Setup. */
+  signOut(): Promise<void>;
 }
+
+/** Shown in Setup when a signed-in account has no `profiles.role = 'kiosk'` row (R21). */
+export const NOT_KIOSK_ACCOUNT = 'This account is not a kiosk account.';

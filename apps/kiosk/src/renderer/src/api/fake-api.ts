@@ -1,5 +1,5 @@
 import { DEFAULT_SETTINGS, layoutSize, type KioskSettings, type LayoutId, type SessionSync, type Template } from '@pb/core';
-import type { KioskApi, PaymentStatus } from './kiosk-api';
+import { NOT_KIOSK_ACCOUNT, type KioskApi, type PaymentStatus } from './kiosk-api';
 
 /** Test controls for `FakeKioskApi`. Read on every call, so e2e tests can change `window.__pbFake` at runtime. */
 export interface FakeConfig {
@@ -152,6 +152,23 @@ export class FakeKioskApi implements KioskApi {
     }
     this.photos.set(sessionId, jpeg);
     return `${sessionId}.jpg`;
+  }
+
+  /** Starts signed in, so the e2e Setup flow skips the sign-in step until staff signs out. */
+  private signedIn = true;
+
+  async isSignedIn(): Promise<boolean> {
+    return this.signedIn;
+  }
+
+  /** Any account signs in, except an `admin…` email, which gets the real role-check error. */
+  async signIn(email: string, _password: string): Promise<void> {
+    if (email.toLowerCase().startsWith('admin')) throw new Error(NOT_KIOSK_ACCOUNT);
+    this.signedIn = true;
+  }
+
+  async signOut(): Promise<void> {
+    this.signedIn = false;
   }
 
   private payment(id: string): FakePayment {

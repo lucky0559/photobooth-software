@@ -1,5 +1,5 @@
 import type { KioskSettings, Template } from '@pb/core';
-import type { QueueJob, QueueResult } from './queue';
+import { NO_SYNC_FAILURES, type QueueJob, type QueueResult, type SyncFailureStatus } from './queue';
 
 export type PrintResult = { ok: true } | { ok: false; reason: string };
 
@@ -41,6 +41,8 @@ export type ConfigView = Omit<LocalConfig, 'pinHash'> & StoreHealth & { pinSet: 
 export interface StoreHealth {
   settingsUnreadable: boolean;
   queueUnavailable: boolean;
+  /** Sync jobs that keep failing (R22), for the Setup staff notice. */
+  syncFailures: SyncFailureStatus;
 }
 
 /** The LocalConfig keys the renderer may write through `setConfig`. */
@@ -53,6 +55,7 @@ export function toConfigView(config: LocalConfig, health: Partial<StoreHealth> =
     pinSet: pinHash !== null,
     settingsUnreadable: health.settingsUnreadable ?? false,
     queueUnavailable: health.queueUnavailable ?? false,
+    syncFailures: health.syncFailures ?? NO_SYNC_FAILURES,
   };
 }
 

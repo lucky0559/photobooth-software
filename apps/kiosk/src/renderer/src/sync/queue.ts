@@ -15,6 +15,8 @@ export interface QueueDeps {
   api: Pick<KioskApi, 'upsertSession' | 'uploadPhoto'>;
   readPhoto(path: string): Promise<ArrayBuffer>;
   now: number;
+  /** Treat every job as due (the network just came back: don't wait out the backoff). */
+  ignoreBackoff?: boolean;
 }
 
 /** Readable message for anything thrown (Supabase rejects with plain `{ message, code }` objects). */
@@ -44,14 +46,15 @@ export async function processQueue(jobs: QueueJob[], deps: QueueDeps): Promise<Q
   for (const j of jobs) if (j.kind === 'upsert_session') pendingRows.set(j.row.id, (pendingRows.get(j.row.id) ?? 0) + 1);
   /** Sessions with an earlier upsert that was skipped or failed in this run. */
   const blockedRows = new Set<string>();
+  const notDue = (job: QueueJob): boolean => !deps.ignoreBackoff && job.nextAttemptAt > deps.now;
 
   for (const job of jobs) {
     if (job.kind === 'upsert_session') {
-      if (blockedRows.has(job.row.id) || job.nextAttemptAt > deps.now) {
+      if (blockedRows.has(job.row.id) || notDue(job)) {
         blockedRows.add(job.row.id);
         continue;
       }
-    } else if (job.nextAttemptAt > deps.now || (pendingRows.get(job.sessionId) ?? 0) > 0) {
+    } else if (notDue(job) || (pendingRows.get(job.sessionId) ?? 0) > 0) {
       continue;
     }
     try {
@@ -76,19 +79,26 @@ export interface QueueRunner {
   stop(): void;
 }
 
-/** Runs `processQueue` against the persisted queue every `intervalMs` and on `kick()`, one run at a time. */
+/**
+ * Runs `processQueue` against the persisted queue every `intervalMs` and on `kick()`, one run at a time. When
+ * `events` (the window) fires `online`, it runs at once with every job treated as due, so a reconnect does not wait
+ * for the timer or the backoff (up to 5 minutes).
+ */
 export function startQueueRunner(
   api: QueueDeps['api'],
   bridge: Pick<KioskBridge, 'queueList' | 'queueApply' | 'readPhoto'>,
   intervalMs = QUEUE_INTERVAL_MS,
   /** Called after every `queueList` call (resolved or rejected), e.g. to re-check queue health. */
   onListed?: () => void,
+  events?: Pick<EventTarget, 'addEventListener' | 'removeEventListener'>,
 ): QueueRunner {
   let running = false;
   let again = false;
   let stopped = false;
-  const run = async (): Promise<void> => {
+  let forceNext = false;
+  const run = async (force = false): Promise<void> => {
     if (stopped) return;
+    if (force) forceNext = true;
     if (running) {
       again = true;
       return;
@@ -97,10 +107,17 @@ export function startQueueRunner(
     try {
       do {
         again = false;
+        const ignoreBackoff = forceNext;
+        forceNext = false;
         const jobs = await bridge.queueList().finally(() => onListed?.());
         // A runner stopped mid-run neither starts processing nor applies its (possibly stale) result.
         if (stopped || jobs.length === 0) continue;
-        const result = await processQueue(jobs, { api, readPhoto: (p) => bridge.readPhoto(p), now: Date.now() });
+        const result = await processQueue(jobs, {
+          api,
+          readPhoto: (p) => bridge.readPhoto(p),
+          now: Date.now(),
+          ignoreBackoff,
+        });
         if (stopped) break;
         if (result.done.length > 0 || result.failed.length > 0) await bridge.queueApply(result);
       } while (again && !stopped);
@@ -111,12 +128,15 @@ export function startQueueRunner(
     }
   };
   const id = setInterval(() => void run(), intervalMs);
+  const onOnline = (): void => void run(true);
+  events?.addEventListener('online', onOnline);
   void run();
   return {
     kick: () => void run(),
     stop: () => {
       stopped = true;
       clearInterval(id);
+      events?.removeEventListener('online', onOnline);
     },
   };
 }

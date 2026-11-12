@@ -13,6 +13,7 @@ import { registerTap } from './setup/secret-tap';
 import { attractStatus } from './state/settings-sync';
 import { useKiosk } from './state/useKiosk';
 import { QUEUE_INTERVAL_MS, startQueueRunner, type QueueRunner } from './sync/queue';
+import { NO_SYNC_FAILURES } from '../../shared/queue';
 import { Backdrop } from './theme/components/Backdrop';
 import { BannerTitle } from './theme/components/BannerTitle';
 
@@ -21,7 +22,9 @@ type Screen = 'loading' | 'setup' | 'pin' | 'kiosk';
 export function App({ api, auth, configWarnings = [] }: { api: KioskApi; auth: SetupAuth | null; configWarnings?: string[] }) {
   const [screen, setScreen] = useState<Screen>('loading');
   const [cameraId, setCameraId] = useState<string | null>(null);
-  const [noticeFlags, setNoticeFlags] = useState<Omit<NoticeFlags, 'queueUnavailable'> | null>(null);
+  const [noticeFlags, setNoticeFlags] = useState<Omit<NoticeFlags, 'queueUnavailable' | 'syncFailures'> | null>(null);
+  // Sync jobs that keep failing (R22): live, refreshed after every queue run like queueUnavailable.
+  const [syncFailures, setSyncFailures] = useState<NoticeFlags['syncFailures']>(NO_SYNC_FAILURES);
   // The PIN that unlocked Setup through the secret corner; main needs it to change the PIN. Dropped on exit.
   const [unlockPin, setUnlockPin] = useState<string | null>(null);
   // The saved-sessions file is unreadable (main keeps retrying): no new session may start.
@@ -36,11 +39,15 @@ export function App({ api, auth, configWarnings = [] }: { api: KioskApi; auth: S
       import.meta.env.VITE_FAKE_API === '1' ? (window.__pbFake?.queueIntervalMs ?? QUEUE_INTERVAL_MS) : QUEUE_INTERVAL_MS;
     const recheckHealth = (): void => {
       window.kiosk.getConfig().then(
-        (cfg) => setQueueUnavailable(cfg.queueUnavailable),
+        (cfg) => {
+          setQueueUnavailable(cfg.queueUnavailable);
+          setSyncFailures(cfg.syncFailures);
+        },
         (err: unknown) => console.error('Reading queue health failed', err),
       );
     };
-    const runner = startQueueRunner(api, window.kiosk, intervalMs, recheckHealth);
+    // `window` fires `online` on reconnect: the runner then syncs at once instead of waiting out the backoff.
+    const runner = startQueueRunner(api, window.kiosk, intervalMs, recheckHealth, window);
     queue.current = runner;
     return () => {
       runner.stop();
@@ -54,6 +61,7 @@ export function App({ api, auth, configWarnings = [] }: { api: KioskApi; auth: S
       setCameraId(cfg.cameraDeviceId);
       setNoticeFlags(cfg);
       setQueueUnavailable(cfg.queueUnavailable);
+      setSyncFailures(cfg.syncFailures);
       setUnlockPin(null);
       setScreen(cfg.pinSet ? 'kiosk' : 'setup');
     });
@@ -73,7 +81,7 @@ export function App({ api, auth, configWarnings = [] }: { api: KioskApi; auth: S
           auth={auth}
           initialCameraId={cameraId}
           currentPin={unlockPin}
-          notices={noticeFlags ? setupNotices({ ...noticeFlags, queueUnavailable }) : []}
+          notices={noticeFlags ? setupNotices({ ...noticeFlags, queueUnavailable, syncFailures }) : []}
           configWarnings={configWarnings}
           onDone={reload}
         />

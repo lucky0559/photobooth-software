@@ -1,6 +1,14 @@
 import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { addJobs, applyResult, EMPTY_QUEUE, normalizeQueueFile, validateQueueJobs, validateQueueResult } from '../src/main/queue-store';
+import {
+  addJobs,
+  applyResult,
+  EMPTY_QUEUE,
+  normalizeQueueFile,
+  syncFailureStatus,
+  validateQueueJobs,
+  validateQueueResult,
+} from '../src/main/queue-store';
 import type { QueueJob } from '../src/shared/queue';
 
 const dir = resolve('/data/photos');
@@ -179,5 +187,86 @@ describe('normalizeQueueFile', () => {
     expect(normalize({ jobs: {}, completedUploads: [] })).toBeNull();
     expect(normalize({ jobs: [], completedUploads: 'x' })).toBeNull();
     expect(normalize({ completedUploads: [] })).toBeNull();
+  });
+});
+
+// R22: permanently failing sync jobs become visible to staff.
+describe('applyResult: firstFailedAt', () => {
+  const [a] = validateQueueJobs([{ ...upsertJob, attempts: 0, nextAttemptAt: 0, lastError: null }], dir) as [QueueJob];
+
+  it('is set on the first failure and kept on later ones', () => {
+    const once = applyResult(addJobs(EMPTY_QUEUE, [a]), { done: [], failed: [{ id: J1, error: 'offline', nextAttemptAt: 5 }] }, 1000);
+    expect(once.jobs[0]).toMatchObject({ attempts: 1, firstFailedAt: 1000 });
+    const twice = applyResult(once, { done: [], failed: [{ id: J1, error: 'still', nextAttemptAt: 9 }] }, 2000);
+    expect(twice.jobs[0]).toMatchObject({ attempts: 2, firstFailedAt: 1000, lastError: 'still' });
+  });
+
+  it('a job from an older queue.json without it gets it on its next failure', () => {
+    const legacy = { ...a, attempts: 4, lastError: 'x' } as QueueJob;
+    const r = applyResult(addJobs(EMPTY_QUEUE, [legacy]), { done: [], failed: [{ id: J1, error: 'y', nextAttemptAt: 9 }] }, 3000);
+    expect(r.jobs[0]).toMatchObject({ attempts: 5, firstFailedAt: 3000 });
+  });
+});
+
+describe('normalizeQueueFile: firstFailedAt (back-compat)', () => {
+  const normalize = normalizeQueueFile(dir);
+  it('keeps a stored firstFailedAt, ignores a bad one, and accepts files without it', () => {
+    const withIt = { ...upsertJob, firstFailedAt: 1234 };
+    expect(normalize({ jobs: [withIt], completedUploads: [] })?.value.jobs[0]).toEqual(withIt);
+    const bad = normalize({ jobs: [{ ...upsertJob, firstFailedAt: 'yesterday' }], completedUploads: [] });
+    expect(bad?.dropped).toBe(0);
+    expect(bad?.value.jobs[0]).toEqual(upsertJob);
+    expect(normalize({ jobs: [upsertJob], completedUploads: [] })?.value.jobs[0]).toEqual(upsertJob);
+  });
+});
+
+describe('syncFailureStatus', () => {
+  const HOUR = 3_600_000;
+  const now = 100 * HOUR;
+  const job = (over: Partial<QueueJob>): QueueJob => ({ ...(upsertJob as unknown as QueueJob), ...over }) as QueueJob;
+  const healthy = { failingCount: 0, oldestFailingSince: null, lastError: null };
+
+  it('is healthy with no jobs or only fresh failures', () => {
+    expect(syncFailureStatus([], now)).toEqual(healthy);
+    expect(syncFailureStatus([job({ attempts: 0, lastError: null })], now)).toEqual(healthy);
+  });
+
+  it('9 attempts within the hour is still healthy; 10 attempts is failing', () => {
+    expect(syncFailureStatus([job({ attempts: 9, firstFailedAt: now - 10 * 60_000, lastError: 'offline' })], now)).toEqual(healthy);
+    expect(syncFailureStatus([job({ attempts: 10, firstFailedAt: now - 20 * 60_000, lastError: 'denied' })], now)).toEqual({
+      failingCount: 1,
+      oldestFailingSince: now - 20 * 60_000,
+      lastError: 'denied',
+    });
+  });
+
+  it('a job failing for more than an hour is failing with few attempts', () => {
+    expect(syncFailureStatus([job({ attempts: 3, firstFailedAt: now - HOUR - 1, lastError: 'slow' })], now)).toEqual({
+      failingCount: 1,
+      oldestFailingSince: now - HOUR - 1,
+      lastError: 'slow',
+    });
+    expect(syncFailureStatus([job({ attempts: 3, firstFailedAt: now - HOUR, lastError: 'slow' })], now)).toEqual(healthy);
+  });
+
+  it('a job without firstFailedAt (older queue.json) counts by attempts only; its start is unknown', () => {
+    expect(syncFailureStatus([job({ attempts: 12, lastError: 'old' })], now)).toEqual({
+      failingCount: 1,
+      oldestFailingSince: null,
+      lastError: 'old',
+    });
+    expect(syncFailureStatus([job({ attempts: 3, lastError: 'old' })], now)).toEqual(healthy);
+  });
+
+  it('several failing jobs: the oldest start and the most recent error', () => {
+    const s = syncFailureStatus(
+      [
+        job({ id: 'a', attempts: 10, firstFailedAt: now - 3 * HOUR, nextAttemptAt: now - 10, lastError: 'older error' }),
+        job({ id: 'b', attempts: 11, firstFailedAt: now - 2 * HOUR, nextAttemptAt: now + 100, lastError: 'newest error' }),
+        job({ id: 'c', attempts: 0, lastError: null }),
+      ],
+      now,
+    );
+    expect(s).toEqual({ failingCount: 2, oldestFailingSince: now - 3 * HOUR, lastError: 'newest error' });
   });
 });

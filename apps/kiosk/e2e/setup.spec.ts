@@ -91,3 +91,26 @@ test('secret corner: 5 taps + PIN reopens Setup', async () => {
   await page.getByRole('button', { name: 'Unlock' }).click();
   await expect(page.getByRole('heading', { name: 'Kiosk setup' })).toBeVisible();
 });
+
+test('Setup: sign out and use another account; a non-kiosk account is refused (R21)', async () => {
+  app = await launch();
+  const page = await app.firstWindow();
+  await page.getByLabel('Admin PIN').fill('2468');
+  await page.getByRole('button', { name: 'Next' }).click();
+  await expect(page.getByLabel('Camera')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Sign out and use another account' }).click();
+  await expect(page.getByLabel('Kiosk account email')).toBeVisible();
+
+  await page.getByLabel('Kiosk account email').fill('admin@local.test');
+  await page.getByLabel('Password').fill('localpass123');
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await expect(page.getByRole('alert')).toHaveText('This account is not a kiosk account.');
+  await expect(page.getByLabel('Kiosk account email')).toBeVisible();
+
+  await page.getByLabel('Kiosk account email').fill('kiosk-2@local.test');
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await expect(page.getByLabel('Camera')).toBeVisible();
+  await page.getByRole('button', { name: 'Done' }).click();
+  await expect(page.getByText('Tap to start')).toBeVisible();
+});

@@ -1,6 +1,6 @@
 import type { KioskSettings, LayoutId, SessionSync, Template } from '@pb/core';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import type { KioskApi, PaymentStatus } from './kiosk-api';
+import { NOT_KIOSK_ACCOUNT, type KioskApi, type PaymentStatus } from './kiosk-api';
 
 interface SettingsRow {
   price_centavos: number;
@@ -23,8 +23,27 @@ interface TemplateRow {
 export class SupabaseKioskApi implements KioskApi {
   constructor(private readonly db: SupabaseClient) {}
 
+  /**
+   * Signs in and requires the account's own profile row (RLS lets a user read it) to say `kiosk`. Anything else (an
+   * admin account, no profile, or the profile cannot be read) signs out locally again, so the kiosk never runs on an
+   * account whose every write would be refused.
+   */
   async signIn(email: string, password: string): Promise<void> {
-    const { error } = await this.db.auth.signInWithPassword({ email, password });
+    const { data, error } = await this.db.auth.signInWithPassword({ email, password });
+    if (error) throw error;
+    const userId = data.user?.id;
+    const profile = userId
+      ? await this.db.from('profiles').select('role').eq('user_id', userId).maybeSingle<{ role: string }>()
+      : { data: null, error: null };
+    if (profile.error || profile.data?.role !== 'kiosk') {
+      await this.db.auth.signOut({ scope: 'local' }).catch(() => undefined);
+      if (profile.error) throw profile.error;
+      throw new Error(NOT_KIOSK_ACCOUNT);
+    }
+  }
+
+  async signOut(): Promise<void> {
+    const { error } = await this.db.auth.signOut({ scope: 'local' });
     if (error) throw error;
   }
 

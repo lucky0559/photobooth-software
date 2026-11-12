@@ -2,10 +2,13 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { PIN_PATTERN } from '../../../shared/bridge';
 import { saveSetup } from '../setup/save-setup';
 
-/** Kiosk Supabase account sign-in. `null` (fake API) skips the step. */
+/** Kiosk account sign-in. `null` skips the step (no account to manage). */
 export interface SetupAuth {
   isSignedIn(): Promise<boolean>;
+  /** Rejects with `This account is not a kiosk account.` for a non-kiosk account (R21). */
   signIn(email: string, password: string): Promise<void>;
+  /** Local scope: ends this kiosk's session only. */
+  signOut(): Promise<void>;
 }
 
 type Step = 'pin' | 'signin' | 'devices';
@@ -103,6 +106,17 @@ export function Setup({
     void run(async () => {
       await auth.signIn(email.trim(), password);
       setStep('devices');
+    });
+  };
+
+  // Setup is behind the PIN, so switching the kiosk to another account needs no further check (R21).
+  const switchAccount = (): void => {
+    if (!auth) return;
+    void run(async () => {
+      await auth.signOut();
+      setEmail('');
+      setPassword('');
+      setStep('signin');
     });
   };
 
@@ -211,6 +225,11 @@ export function Setup({
           <button type="submit" disabled={busy}>
             Done
           </button>
+          {auth && (
+            <button type="button" onClick={switchAccount} disabled={busy}>
+              Sign out and use another account
+            </button>
+          )}
         </form>
       )}
 

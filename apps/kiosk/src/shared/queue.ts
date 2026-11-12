@@ -4,7 +4,29 @@ import type { SessionSync } from '@pb/core';
 export type QueueJob = (
   | { id: string; kind: 'upsert_session'; row: SessionSync }
   | { id: string; kind: 'upload_photo'; sessionId: string; filePath: string }
-) & { attempts: number; nextAttemptAt: number; lastError: string | null };
+) & {
+  attempts: number;
+  nextAttemptAt: number;
+  lastError: string | null;
+  /** Epoch ms of the first failed attempt; absent before any failure (and in queue.json files from older builds). */
+  firstFailedAt?: number;
+};
+
+/**
+ * Renderer-safe summary of sync jobs that keep failing (R22): jobs with at least `FAILING_MIN_ATTEMPTS` attempts, or
+ * failing for more than `FAILING_AFTER_MS` since their first failure.
+ */
+export interface SyncFailureStatus {
+  failingCount: number;
+  /** Earliest `firstFailedAt` among failing jobs; null when none of them recorded it. */
+  oldestFailingSince: number | null;
+  /** Error of the failing job that failed most recently. */
+  lastError: string | null;
+}
+
+export const FAILING_MIN_ATTEMPTS = 10;
+export const FAILING_AFTER_MS = 60 * 60 * 1000;
+export const NO_SYNC_FAILURES: SyncFailureStatus = { failingCount: 0, oldestFailingSince: null, lastError: null };
 
 export interface QueueResult {
   done: string[];

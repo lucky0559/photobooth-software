@@ -2,7 +2,7 @@ import { toConfigView, type ConfigView, type LocalConfig } from '../shared/bridg
 import type { QueueJob } from '../shared/queue';
 import { validateConfigPatch } from './config-validation';
 import type { JsonStore } from './json-store';
-import { addJobs, applyResult, validateQueueJobs, validateQueueResult, type QueueFile } from './queue-store';
+import { addJobs, applyResult, syncFailureStatus, validateQueueJobs, validateQueueResult, type QueueFile } from './queue-store';
 
 /**
  * The config and queue IPC handlers, minus Electron. While `queue.json` is unreadable the queue store is
@@ -12,7 +12,11 @@ import { addJobs, applyResult, validateQueueJobs, validateQueueResult, type Queu
 export function createStoreApi(config: JsonStore<LocalConfig>, queue: JsonStore<QueueFile>, photosDir: string) {
   // The renderer never receives the PIN hash; it only learns whether a PIN is set, plus live store health.
   const view = (c: LocalConfig): ConfigView =>
-    toConfigView(c, { settingsUnreadable: config.writeBlocked, queueUnavailable: queue.writeBlocked });
+    toConfigView(c, {
+      settingsUnreadable: config.writeBlocked,
+      queueUnavailable: queue.writeBlocked,
+      syncFailures: syncFailureStatus(queue.get().jobs, Date.now()),
+    });
   return {
     getConfig(): ConfigView {
       queue.recheck();

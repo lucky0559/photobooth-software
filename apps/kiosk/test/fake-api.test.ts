@@ -85,3 +85,16 @@ describe('FakeKioskApi', () => {
     expect(await api.uploadPhoto('s1', new ArrayBuffer(1))).toBe('s1.jpg');
   });
 });
+
+describe('FakeKioskApi account (R21)', () => {
+  it('starts signed in; signOut and signIn switch accounts; an admin email gets the role-check error', async () => {
+    const { api } = setup();
+    expect(await api.isSignedIn()).toBe(true);
+    await api.signOut();
+    expect(await api.isSignedIn()).toBe(false);
+    await expect(api.signIn('admin@local.test', 'pw')).rejects.toThrow('This account is not a kiosk account.');
+    expect(await api.isSignedIn()).toBe(false);
+    await api.signIn('kiosk-2@local.test', 'pw');
+    expect(await api.isSignedIn()).toBe(true);
+  });
+});

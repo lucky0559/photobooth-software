@@ -99,5 +99,19 @@ describe('createStoreApi: queue.json health', () => {
     expect(onDisk).not.toHaveProperty('queueUnavailable');
     expect(onDisk).not.toHaveProperty('settingsUnreadable');
     expect(onDisk).not.toHaveProperty('pinSet');
+    expect(onDisk).not.toHaveProperty('syncFailures');
+  });
+
+  it('getConfig reports permanently failing sync jobs (R22), and queueApply records when failures began', () => {
+    writeFileSync(queueFile(), JSON.stringify({ jobs: [{ ...job(J1, SID), attempts: 10, lastError: 'denied' }], completedUploads: [] }));
+    const { api, lock } = open();
+    lock.on = false;
+    api.queueList();
+    expect(api.getConfig().syncFailures).toEqual({ failingCount: 1, oldestFailingSince: null, lastError: 'denied' });
+    api.queueAdd([job(J2, SID2)]);
+    api.queueApply({ done: [], failed: [{ id: J2, error: 'offline', nextAttemptAt: 1 }] });
+    const stored = JSON.parse(readFileSync(queueFile(), 'utf8')).jobs[1] as { firstFailedAt?: number };
+    expect(typeof stored.firstFailedAt).toBe('number');
+    expect(api.getConfig().syncFailures.failingCount).toBe(1);
   });
 });

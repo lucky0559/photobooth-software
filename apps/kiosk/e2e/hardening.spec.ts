@@ -149,3 +149,24 @@ test('unreadable queue.json: Attract is out of service, then back in service onc
     chmodSync(queueFile, 0o644);
   }
 });
+
+test('a saved upload that keeps failing shows a staff notice in Setup (R22)', async () => {
+  const SID = '0b3f6a52-6c1e-4d5e-9a0b-1c2d3e4f5a6b';
+  const job = {
+    id: '11111111-1111-4111-8111-111111111111',
+    kind: 'upload_photo',
+    sessionId: SID,
+    filePath: join(userData, 'photos', `${SID}.jpg`),
+    attempts: 12,
+    nextAttemptAt: Date.now() + 3_600_000,
+    lastError: 'new row violates row-level security policy',
+    firstFailedAt: Date.now() - 2 * 3_600_000,
+  };
+  writeFileSync(join(userData, 'queue.json'), JSON.stringify({ jobs: [job], completedUploads: [] }));
+  app = await launch();
+  const page = await app.firstWindow();
+  await expect(page.getByRole('heading', { name: 'Kiosk setup' })).toBeVisible();
+  await expect(
+    page.getByText(/^1 saved upload is failing since \w{3} \d{1,2}, \d{1,2}:\d{2} [AP]M: new row violates row-level security policy$/),
+  ).toBeVisible();
+});

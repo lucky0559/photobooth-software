@@ -20,7 +20,11 @@ import './theme/theme.css';
 import './styles.css';
 
 function createApi(): { api: KioskApi; auth: SetupAuth | null } {
-  if (import.meta.env.VITE_FAKE_API === '1') return { api: createFakeKioskApi(), auth: null };
+  if (import.meta.env.VITE_FAKE_API === '1') {
+    // The fake starts signed in (Setup skips sign-in) but supports "Sign out and use another account".
+    const fake = createFakeKioskApi();
+    return { api: fake, auth: fake };
+  }
   // checkEnv has already verified both are set.
   const url = import.meta.env.VITE_SUPABASE_URL as string;
   const key = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
