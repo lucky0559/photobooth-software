@@ -42,7 +42,8 @@ export function transition(state: KioskState, event: KioskEvent, settings: Kiosk
     case 'payment':
       if (event.type === 'PAYMENT_PAID') {
         const server = event.amountCentavos;
-        const amountCentavos = server !== undefined && Number.isInteger(server) && server >= 0 ? server : state.amountCentavos;
+        // A paid session must never be recorded as free: only a positive integer from the payment counts.
+        const amountCentavos = server !== undefined && Number.isInteger(server) && server > 0 ? server : state.amountCentavos;
         return { name: 'capture', sessionId: state.sessionId, amountCentavos, shots: [] };
       }
       if (event.type === 'PAYMENT_CANCELLED') return { name: 'attract' };
