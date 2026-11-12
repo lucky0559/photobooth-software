@@ -43,8 +43,10 @@ Started by Task 5; later tasks extend it.
   - `NEXT_PUBLIC_SUPABASE_URL`: the project URL. Also put into the Content-Security-Policy at build time, so redeploy
     after changing it.
   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`: the anon / publishable key (browser-safe; RLS enforces admin-only access).
-  - `SUPABASE_SERVICE_ROLE_KEY`: server only, never `NEXT_PUBLIC_`. The Task 12 pages do not use it; leave it unset
-    in Vercel until a feature needs it.
+  - `SUPABASE_SERVICE_ROLE_KEY`: **required** on the server (Task 13). Only the public download page
+    (`/d/<token>`, `apps/web/lib/download.ts`) uses it, to look up one session by its token and sign that session's
+    photo URL. Add it in Vercel as a sensitive (secret) env var, never with a `NEXT_PUBLIC_` prefix and never in
+    client code. Without it `/d/<token>` fails with a generic error page; the admin pages do not need it.
   - `NEXT_PUBLIC_TEMPLATE_UPLOAD_MAX_BYTES` (optional, whole bytes, build time): the largest template the upload
     form sends. Default and ceiling 10485760 (10 MB, the template maximum the server always enforces). **Vercel
     Hobby: set `4404020`** (4.2 MiB, shown as "4.2 MB"), because Vercel Functions reject request bodies over 4.5 MB;
@@ -58,4 +60,9 @@ Started by Task 5; later tasks extend it.
 - Login rate limiting is left to Supabase Auth's built-in limits (`[auth.rate_limit]` in `config.toml` / dashboard);
   the admin app adds none of its own.
 - Admin accounts: create the user in Supabase Auth, then `insert into profiles (user_id, role) values ('<id>', 'admin')`.
+- Download page `/d/<token>` (public, no login): sends `Cache-Control: no-store`, `X-Robots-Tag: noindex, nofollow`
+  and `Referrer-Policy: no-referrer`; photo links are signed for 1 hour. Do not put a caching CDN rule in front of
+  `/d/*`.
+- Dashboard money comes from the `payments` table (`status = 'paid'`, by `paid_at` in Asia/Manila), never from the
+  kiosk-reported session amount.
 - Local e2e: `pnpm --filter web e2e` (local Supabase running; builds and serves on :3100, restores the seeded data).
