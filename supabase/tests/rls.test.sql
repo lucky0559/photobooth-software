@@ -3,7 +3,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 
-select plan(51);
+select plan(71);
 
 -- ---------------------------------------------------------------------------
 -- Fixtures (as the migration owner, bypassing RLS)
@@ -20,7 +20,8 @@ insert into public.profiles (user_id, role) values
   ('33333333-3333-3333-3333-333333333333', 'kiosk');
 
 insert into public.templates (id, name, layout, overlay_path) values
-  ('dddddddd-0000-0000-0000-000000000001', 'Test strip', 'strip_2x6', 'templates/test-strip.png');
+  ('dddddddd-0000-0000-0000-000000000001', 'Test strip', 'strip_2x6', 'templates/test-strip.png'),
+  ('dddddddd-0000-0000-0000-000000000002', 'Test 4R', 'print_4r', 'test-4r.png');
 
 insert into public.sessions (id, kiosk_id, template_id, download_token, amount_centavos, status) values
   -- A1: paid 15000, used for column updates and completion
@@ -33,6 +34,10 @@ insert into public.sessions (id, kiosk_id, template_id, download_token, amount_c
   ('a0000000-0000-0000-0000-000000000004', '22222222-2222-2222-2222-222222222222', 'dddddddd-0000-0000-0000-000000000001', 'tokA4aaaaaaaaaaaaaaaaa', 15000, 'awaiting_payment'),
   -- A6: paid 15000, completed through the kiosk's upsert
   ('a0000000-0000-0000-0000-000000000006', '22222222-2222-2222-2222-222222222222', 'dddddddd-0000-0000-0000-000000000001', 'tokA6aaaaaaaaaaaaaaaaa', 15000, 'awaiting_payment'),
+  -- A8: paid after the guest cancelled (operator must refund)
+  ('a0000000-0000-0000-0000-000000000008', '22222222-2222-2222-2222-222222222222', 'dddddddd-0000-0000-0000-000000000001', 'tokA8aaaaaaaaaaaaaaaaa', 15000, 'paid_after_cancel'),
+  -- A9: cancelled
+  ('a0000000-0000-0000-0000-000000000009', '22222222-2222-2222-2222-222222222222', 'dddddddd-0000-0000-0000-000000000001', 'tokA9aaaaaaaaaaaaaaaaa', 15000, 'cancelled'),
   -- B1: kiosk B's session with a payment
   ('b0000000-0000-0000-0000-000000000001', '33333333-3333-3333-3333-333333333333', 'dddddddd-0000-0000-0000-000000000001', 'tokB1bbbbbbbbbbbbbbbbb', 15000, 'awaiting_payment'),
   -- B2: kiosk B's session with no photo yet
@@ -43,6 +48,7 @@ insert into public.payments (session_id, provider_intent_id, amount_centavos, st
   ('a0000000-0000-0000-0000-000000000003', 'pi_a3', 20000, 'paid'),
   ('a0000000-0000-0000-0000-000000000004', 'pi_a4', 15000, 'pending'),
   ('a0000000-0000-0000-0000-000000000006', 'pi_a6', 15000, 'paid'),
+  ('a0000000-0000-0000-0000-000000000008', 'pi_a8', 15000, 'paid'),
   ('b0000000-0000-0000-0000-000000000001', 'pi_b1', 15000, 'paid');
 
 insert into storage.objects (bucket_id, name) values
@@ -118,6 +124,83 @@ select lives_ok(
        print_error = excluded.print_error, created_at = excluded.created_at,
        completed_at = excluded.completed_at $$,
   'kiosk upsert completes an existing paid session (kiosk app flow)');
+
+select lives_ok(
+  $$ insert into public.sessions (id, template_id, download_token, amount_centavos, status, created_at, completed_at)
+     values ('a0000000-0000-0000-0000-000000000006', 'dddddddd-0000-0000-0000-000000000001',
+             'tokA6aaaaaaaaaaaaaaaaa', 15000, 'completed', now(), now())
+     on conflict (id) do update set
+       template_id = excluded.template_id, download_token = excluded.download_token,
+       amount_centavos = excluded.amount_centavos, status = excluded.status,
+       print_error = excluded.print_error, created_at = excluded.created_at,
+       completed_at = excluded.completed_at $$,
+  'kiosk can re-upsert an identical row (offline queue retry)');
+
+-- Fix round 1: frozen and validated columns
+select results_eq(
+  $$ with i as (
+       insert into public.sessions (id, template_id, download_token, amount_centavos, status, created_at)
+       values ('a0000000-0000-0000-0000-0000000000a7', 'dddddddd-0000-0000-0000-000000000001',
+               'tokAa7aaaaaaaaaaaaaaaa', 0, 'free', '2099-01-01T00:00:00Z')
+       returning created_at)
+     select created_at = now() from i $$,
+  $$ values (true) $$,
+  'a future created_at on kiosk insert is clamped to now()');
+
+select results_eq(
+  $$ with u as (update public.sessions set created_at = '2000-01-01T00:00:00Z'
+                 where id = 'a0000000-0000-0000-0000-000000000002' returning created_at)
+     select created_at = now() from u $$,
+  $$ values (true) $$,
+  'kiosk update keeps the stored created_at');
+
+select throws_ok(
+  $$ update public.sessions set download_token = 'tokZZZZZZZZZZZZZZZZZZZ' where id = 'a0000000-0000-0000-0000-000000000002' $$,
+  'P0001', 'kiosk may not change download_token or template_id',
+  'kiosk cannot change download_token');
+
+select throws_ok(
+  $$ update public.sessions set template_id = 'dddddddd-0000-0000-0000-000000000002' where id = 'a0000000-0000-0000-0000-000000000002' $$,
+  'P0001', 'kiosk may not change download_token or template_id',
+  'kiosk cannot change template_id');
+
+select throws_ok(
+  $$ insert into public.sessions (id, template_id, download_token, amount_centavos, status)
+     values ('a0000000-0000-0000-0000-0000000000a8', 'dddddddd-0000-0000-0000-000000000001', 'short', 0, 'free') $$,
+  '23514', null,
+  'download_token must be 22 base64url characters');
+
+select throws_ok(
+  $$ update public.sessions set photo_path = 'b0000000-0000-0000-0000-000000000001.jpg'
+      where id = 'a0000000-0000-0000-0000-000000000002' $$,
+  '23514', null,
+  'photo_path must be <session id>.jpg');
+
+select throws_ok(
+  $$ update public.sessions set print_error = repeat('x', 1001) where id = 'a0000000-0000-0000-0000-000000000002' $$,
+  '23514', null,
+  'print_error is capped at 1000 characters');
+
+-- Fix round 1: server-owned statuses
+select throws_ok(
+  $$ update public.sessions set status = 'completed' where id = 'a0000000-0000-0000-0000-000000000008' $$,
+  'P0001', 'kiosk may not change the status of a cancelled session',
+  'kiosk cannot complete a paid_after_cancel session');
+
+select throws_ok(
+  $$ update public.sessions set status = 'free' where id = 'a0000000-0000-0000-0000-000000000009' $$,
+  'P0001', 'kiosk may not change the status of a cancelled session',
+  'kiosk cannot set a cancelled session to free');
+
+select throws_ok(
+  $$ update public.sessions set status = 'free' where id = 'a0000000-0000-0000-0000-000000000004' $$,
+  'P0001', 'kiosk may not set a session with a payment to free',
+  'kiosk cannot set an awaiting_payment session with a payment to free');
+
+select throws_ok(
+  $$ delete from public.sessions where id = 'a0000000-0000-0000-0000-000000000002' $$,
+  '42501', null,
+  'kiosk cannot delete its own session');
 
 -- Rule 1: amount_centavos
 select throws_ok(
@@ -250,6 +333,15 @@ select results_eq(
   $$ values ('a0000000-0000-0000-0000-000000000001.jpg'::text) $$,
   'kiosk can read back only the photo of its own session');
 
+-- storage-api sets this flag for its own deletes; set it so RLS alone decides.
+set local storage.allow_delete_query = 'true';
+select results_eq(
+  $$ with d as (delete from storage.objects
+                 where bucket_id = 'photos' and name = 'a0000000-0000-0000-0000-000000000001.jpg' returning 1)
+     select count(*)::int from d $$,
+  $$ values (0) $$,
+  'kiosk cannot delete its own photo object');
+
 select is(
   (select count(*)::int from storage.objects where bucket_id = 'templates'),
   1, 'kiosk can read template overlays');
@@ -283,8 +375,32 @@ select throws_ok(
   $$ delete from public.settings $$,
   '42501', null, 'admin cannot delete settings');
 
+select throws_ok(
+  $$ insert into public.settings (id) values (1) on conflict do nothing $$,
+  '42501', null, 'admin cannot insert settings');
+
+select throws_ok(
+  $$ update public.settings set price_centavos = 100001 $$,
+  '23514', null, 'settings price above 100000 is rejected');
+
+select throws_ok(
+  $$ update public.settings set shots_per_session = 5 $$,
+  '23514', null, 'settings shots_per_session 5 is rejected');
+
+select throws_ok(
+  $$ update public.settings set copies_per_session = 5 $$,
+  '23514', null, 'settings copies_per_session 5 is rejected');
+
+select throws_ok(
+  $$ update public.settings set link_expiry_days = 0 $$,
+  '23514', null, 'settings link_expiry_days 0 is rejected');
+
+select throws_ok(
+  $$ update public.settings set link_expiry_days = 31 $$,
+  '23514', null, 'settings link_expiry_days 31 is rejected');
+
 select is(
-  (select count(*)::int from public.payments), 5, 'admin sees all payments');
+  (select count(*)::int from public.payments), 6, 'admin sees all payments');
 
 select is(
   (select count(*)::int from storage.objects where bucket_id = 'photos'), 2, 'admin can read photos');
@@ -317,6 +433,19 @@ select throws_ok(
   '42501', null, 'anon cannot execute is_admin()');
 
 -- ===========================================================================
+-- Signed-in user with no profile row
+-- ===========================================================================
+reset role;
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"44444444-4444-4444-4444-444444444444","role":"authenticated"}';
+
+select results_eq(
+  $$ select public.is_admin(), public.is_kiosk(),
+            (select count(*)::int from public.settings) + (select count(*)::int from public.sessions) $$,
+  $$ values (false, false, 0) $$,
+  'a user without a profile is neither admin nor kiosk and sees nothing');
+
+-- ===========================================================================
 -- Catalog checks
 -- ===========================================================================
 reset role;
@@ -328,9 +457,12 @@ select ok(
   'is_admin() and is_kiosk() are security definer with search_path = public');
 
 select ok(
-  not has_function_privilege('anon', 'public.is_kiosk()', 'execute')
+  not has_function_privilege('anon', 'public.is_admin()', 'execute')
+  and not has_function_privilege('anon', 'public.is_kiosk()', 'execute')
   and not has_function_privilege('service_role', 'public.is_admin()', 'execute')
-  and has_function_privilege('authenticated', 'public.is_admin()', 'execute'),
+  and not has_function_privilege('service_role', 'public.is_kiosk()', 'execute')
+  and has_function_privilege('authenticated', 'public.is_admin()', 'execute')
+  and has_function_privilege('authenticated', 'public.is_kiosk()', 'execute'),
   'is_admin()/is_kiosk() execute is granted only to authenticated');
 
 select results_eq(

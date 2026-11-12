@@ -67,6 +67,9 @@ schema_paths = []
 
 [db.seed]
 # If enabled, seeds the database after migrations during a db reset.
+# seed.sql is LOCAL ONLY (published test passwords). Local `supabase db reset` needs this on;
+# never run `supabase db reset --linked` or `supabase db push --include-seed` against a hosted
+# project (see docs/ENVIRONMENTS.md).
 enabled = true
 # Specifies an ordered list of seed files to load during db reset.
 # Supports glob patterns relative to supabase directory: "./seeds/*.sql"
@@ -175,7 +178,8 @@ enable_refresh_token_rotation = true
 # Requires enable_refresh_token_rotation = true.
 refresh_token_reuse_interval = 10
 # Allow/disallow new user signups to your project. Existing users can still sign in.
-enable_signup = true
+# Off: admin and kiosk accounts are created by an operator, never self-service.
+enable_signup = false
 # Allow/disallow anonymous sign-ins to your project.
 enable_anonymous_sign_ins = false
 # Allow/disallow testing manual linking of accounts

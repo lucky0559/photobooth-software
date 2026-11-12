@@ -29,8 +29,8 @@ insert into public.profiles (user_id, role) values
   ('00000000-0000-0000-0000-00000000ad01', 'admin'),
   ('00000000-0000-0000-0000-00000000c105', 'kiosk');
 
--- Object name inside the `templates` bucket (no file is uploaded by this seed).
+-- overlay_path is the object name inside the `templates` bucket (no file is uploaded by this seed).
 insert into public.templates (id, name, layout, overlay_path) values
-  ('00000000-0000-0000-0000-0000000057a1', 'Sample strip', 'strip_2x6', 'templates/sample-strip.png');
+  ('00000000-0000-0000-0000-0000000057a1', 'Sample strip', 'strip_2x6', 'sample-strip.png');
 
 update public.settings set active_template_id = '00000000-0000-0000-0000-0000000057a1' where id = 1;

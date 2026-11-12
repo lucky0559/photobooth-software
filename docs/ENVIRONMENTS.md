@@ -17,6 +17,7 @@ Two phases. The code is the same in both; only accounts, keys, and plans change.
 Rules for this phase:
 - `PAYMONGO_MODE=test` everywhere. Live keys never go into the testing projects.
 - Seed users from `supabase/seed.sql` exist only in the local stack. The cloud test project gets its own admin and kiosk users.
+- **Never seed a hosted project.** Do not run `supabase db reset --linked` or `supabase db push --include-seed` against the cloud test or production project: both load `seed.sql`, which creates `admin@local.test` / `kiosk@local.test` with a published password. Apply schema to hosted projects with plain `supabase db push` only.
 - Photos in the cloud test project are test data; purge them freely.
 
 ## Production phase (later): paid tiers

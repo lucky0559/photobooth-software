@@ -42,11 +42,13 @@ create table public.sessions (
   id uuid primary key,
   kiosk_id uuid not null default auth.uid() references auth.users (id),
   template_id uuid not null references public.templates (id),
-  download_token text not null unique,
+  -- 16 random bytes, base64url: exactly 22 characters.
+  download_token text not null unique check (download_token ~ '^[A-Za-z0-9_-]{22}$'),
   amount_centavos int not null check (amount_centavos between 0 and 100000),
   status text not null check (status in ('awaiting_payment', 'paid', 'free', 'cancelled', 'paid_after_cancel', 'completed')),
-  photo_path text null,
-  print_error text null,
+  -- Informational only: readers derive the object name from id, never from this.
+  photo_path text null check (photo_path is null or photo_path = id::text || '.jpg'),
+  print_error text null check (print_error is null or length(print_error) <= 1000),
   created_at timestamptz not null default now(),
   completed_at timestamptz null
 );
@@ -107,13 +109,33 @@ begin
     if new.status not in ('awaiting_payment', 'free', 'completed') then
       raise exception 'kiosk may only insert status awaiting_payment, free or completed';
     end if;
+    -- Link expiry and "today" grouping key off created_at: no future dates.
+    new.created_at := least(new.created_at, now());
   else
-    if new.status is distinct from old.status and new.status not in ('free', 'completed') then
-      raise exception 'kiosk may only set status free or completed';
+    -- The kiosk upsert re-sends its local created_at; keep the stored one
+    -- silently (create-payment may have set it) instead of failing the sync.
+    new.created_at := old.created_at;
+
+    if new.download_token is distinct from old.download_token or new.template_id is distinct from old.template_id then
+      raise exception 'kiosk may not change download_token or template_id';
     end if;
     -- The server decides the price; the kiosk can only repeat it.
     if new.amount_centavos is distinct from old.amount_centavos then
       raise exception 'kiosk may not change amount_centavos';
+    end if;
+
+    if new.status is distinct from old.status then
+      -- Server-owned outcomes (refund signal for the operator) stay as they are.
+      if old.status in ('cancelled', 'paid_after_cancel') then
+        raise exception 'kiosk may not change the status of a cancelled session';
+      end if;
+      if new.status not in ('free', 'completed') then
+        raise exception 'kiosk may only set status free or completed';
+      end if;
+      if new.status = 'free' and old.status = 'awaiting_payment'
+         and exists (select 1 from public.payments p where p.session_id = new.id) then
+        raise exception 'kiosk may not set a session with a payment to free';
+      end if;
     end if;
   end if;
 
