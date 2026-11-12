@@ -38,11 +38,17 @@ export async function loadDownload(token: string, now: Date = new Date()): Promi
   // Object name from the session id, never from photo_path (that column is only the "uploaded" flag).
   const object = `${row.id}.jpg`;
   const bucket = db.storage.from('photos');
-  const [inline, download] = await Promise.all([
+  const signed = await Promise.all([
     bucket.createSignedUrl(object, SIGNED_URL_SECONDS),
     bucket.createSignedUrl(object, SIGNED_URL_SECONDS, { download: `photobooth-${manilaDayKey(row.created_at)}.jpg` }),
-  ]);
-  // photo_path set but the object is missing (or signing failed): treat as still uploading.
-  if (inline.error || download.error || !inline.data?.signedUrl || !download.data?.signedUrl) return { state: 'uploading' };
-  return { state: 'ready', imageUrl: inline.data.signedUrl, downloadUrl: download.data.signedUrl };
+  ]).catch(() => null);
+  const imageUrl = signed?.[0].data?.signedUrl;
+  const downloadUrl = signed?.[1].data?.signedUrl;
+  // photo_path set but the object is missing, or Storage is down: the guest sees "still uploading". One fixed
+  // line for the operator: no token, no ids, no error text (the error could echo the object name).
+  if (!signed || signed[0].error || signed[1].error || !imageUrl || !downloadUrl) {
+    console.error('download: signing failed');
+    return { state: 'uploading' };
+  }
+  return { state: 'ready', imageUrl, downloadUrl };
 }

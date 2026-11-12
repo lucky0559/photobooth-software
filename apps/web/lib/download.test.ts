@@ -5,6 +5,7 @@ const db = vi.hoisted(() => ({
   eqCalls: [] as [string, string, unknown][],
   session: null as null | { id: string; created_at: string; photo_path: string | null },
   signError: false,
+  signThrows: false,
   signCalls: [] as { object: string; seconds: number; opts?: { download?: string } }[],
 }));
 
@@ -28,6 +29,7 @@ vi.mock('./supabase/admin', () => ({
         from: () => ({
           createSignedUrl: async (object: string, seconds: number, opts?: { download?: string }) => {
             db.signCalls.push({ object, seconds, opts });
+            if (db.signThrows) throw new Error(`fetch failed for ${object}`);
             return db.signError
               ? { data: null, error: new Error('Object not found') }
               : { data: { signedUrl: `https://sb.test/sign/photos/${object}?d=${opts?.download ?? ''}` }, error: null };
@@ -51,6 +53,8 @@ describe('loadDownload', () => {
     db.signCalls.length = 0;
     db.session = { id: ID, created_at: '2026-11-11T16:30:00+00:00', photo_path: 'evil/../other.jpg' };
     db.signError = false;
+    db.signThrows = false;
+    vi.restoreAllMocks();
   });
 
   it.each(['abc', 'A'.repeat(21), 'A'.repeat(23), 'A'.repeat(40), '../etc/passwd/xxxxxxxxx', 'ÄbCdEfGhIjKlMnOpQrSt_-', 'AbCdEfGhIjKlMnOpQrSt.-', ''])(
@@ -79,7 +83,41 @@ describe('loadDownload', () => {
 
   it('missing photo object falls back to uploading', async () => {
     db.signError = true;
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
     await expect(loadDownload(TOKEN, NOW)).resolves.toEqual({ state: 'uploading' });
+  });
+
+  /** Every console call made while `run` executes, as one string per call. */
+  async function captureLogs(run: () => Promise<unknown>): Promise<string[]> {
+    const lines: string[] = [];
+    const record = (...args: unknown[]) => {
+      lines.push(args.map((a) => (a instanceof Error ? `${a.message} ${a.stack}` : String(a))).join(' '));
+    };
+    for (const level of ['error', 'warn', 'log', 'info'] as const) vi.spyOn(console, level).mockImplementation(record);
+    await run();
+    return lines;
+  }
+
+  it.each([
+    ['returns an error (object missing)', () => (db.signError = true)],
+    ['throws (Storage outage)', () => (db.signThrows = true)],
+  ])('a signer that %s logs one fixed line and shows uploading', async (_label, fail) => {
+    fail();
+    let view: unknown;
+    const lines = await captureLogs(async () => {
+      view = await loadDownload(TOKEN, NOW);
+    });
+    expect(view).toEqual({ state: 'uploading' });
+    expect(lines).toEqual(['download: signing failed']);
+    // No token, no session id, no error text.
+    expect(lines.join('\n')).not.toContain(TOKEN);
+    expect(lines.join('\n')).not.toContain(ID);
+    expect(lines.join('\n')).not.toMatch(/not found|fetch failed/i);
+  });
+
+  it('a successful signing logs nothing', async () => {
+    const lines = await captureLogs(() => loadDownload(TOKEN, NOW));
+    expect(lines).toEqual([]);
   });
 
   it('no photo_path is uploading; old session is expired, without signing', async () => {

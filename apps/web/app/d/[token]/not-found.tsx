@@ -1,3 +1,12 @@
+import type { Metadata } from 'next';
+
+// A guest page: never the admin title from the root layout.
+export const metadata: Metadata = {
+  title: 'Photo not found',
+  robots: { index: false, follow: false, nocache: true },
+  referrer: 'no-referrer',
+};
+
 // Same page for a malformed and an unknown token (status 404): it never says which check failed.
 export default function DownloadNotFound() {
   return (

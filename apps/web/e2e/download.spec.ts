@@ -63,6 +63,7 @@ test.afterAll(async () => {
 
 test('a ready link shows the photo and a Download photo button with a signed attachment URL', async ({ page, request }) => {
   await page.goto(`/d/${ready.token}`);
+  await expect(page).toHaveTitle('Your photobooth photo');
   const img = page.getByRole('img', { name: 'Your photobooth photo' });
   await expect(img).toBeVisible();
   await expect.poll(() => img.evaluate((el: HTMLImageElement) => (el.complete ? el.naturalWidth : 0))).toBeGreaterThan(0);
@@ -111,6 +112,7 @@ test('unknown and malformed tokens are the same plain 404', async ({ page }) => 
   for (const p of paths) {
     const res = await page.goto(`/d/${p}`);
     expect(res!.status(), p).toBe(404);
+    await expect(page, p).toHaveTitle('Photo not found'); // a neutral guest title, never the admin's
     texts.push(await page.locator('body').innerText());
   }
   // What the guest sees is identical whether the token was malformed or unknown: no oracle.
@@ -126,6 +128,8 @@ test('the download page sends privacy headers', async ({ request }) => {
     expect(h['x-robots-tag']).toContain('noindex');
     expect(h['referrer-policy']).toBe('no-referrer');
     expect(h['x-frame-options']).toBe('DENY');
+    expect(h['strict-transport-security']).toBe('max-age=63072000; includeSubDomains');
+    expect(h['permissions-policy']).toBe('camera=(), microphone=(), geolocation=(), payment=()');
     expect(h['content-security-policy']).toMatch(/img-src[^;]*http:\/\/127\.0\.0\.1:54321/);
   }
   const html = await (await request.get(`/d/${ready.token}`)).text();

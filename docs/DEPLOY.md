@@ -63,6 +63,9 @@ Started by Task 5; later tasks extend it.
 - Download page `/d/<token>` (public, no login): sends `Cache-Control: no-store`, `X-Robots-Tag: noindex, nofollow`
   and `Referrer-Policy: no-referrer`; photo links are signed for 1 hour. Do not put a caching CDN rule in front of
   `/d/*`.
+- Link expiry is read live from settings on every `/d/<token>` request, so changing it applies retroactively to old links.
+- A signed photo URL stays valid for up to 1 hour after it was issued, so it can outlive the link expiry by up to 1 hour.
+- The Needs attention list can show an offline booth's un-synced sessions (paid, not yet completed) until it reconnects.
 - Dashboard money comes from the `payments` table (`status = 'paid'`, by `paid_at` in Asia/Manila), never from the
   kiosk-reported session amount.
 - Local e2e: `pnpm --filter web e2e` (local Supabase running; builds and serves on :3100, restores the seeded data).
