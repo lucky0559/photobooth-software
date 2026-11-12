@@ -10,6 +10,7 @@ import { createJsonStore, type JsonStore } from './json-store';
 import { findOrphanPhotos, listPhotoFiles, resolvePhotoReadPath, selectPhotosToDelete } from './photos';
 import { EMPTY_QUEUE, normalizeQueueFile, type QueueFile } from './queue-store';
 import { createNavigationGuard, isAllowedPermissionCheck, isAllowedPermissionRequest } from './security';
+import { focusExistingWindow, shouldTakeSingleInstanceLock } from './single-instance';
 import { applyStartupNotices, flagDroppedUploads } from './startup';
 
 /** Deletes local photos whose upload finished 7+ days ago (run once on app start). Never throws. */
@@ -69,6 +70,10 @@ app.on('web-contents-created', (_e, contents) => {
   contents.on('will-redirect', guardNavigation);
 });
 
+// After any userData override: Electron keys the lock on the userData dir. Packaged only (see single-instance.ts).
+const isSecondInstance = shouldTakeSingleInstanceLock(app.isPackaged) && !app.requestSingleInstanceLock();
+let mainWindow: BrowserWindow | null = null;
+
 function createWindow(onShown: () => void): void {
   const packaged = app.isPackaged;
   const win = new BrowserWindow({
@@ -89,6 +94,10 @@ function createWindow(onShown: () => void): void {
       additionalArguments: packaged ? [] : [UNPACKAGED_ARG],
     },
   });
+  mainWindow = win;
+  win.on('closed', () => {
+    if (mainWindow === win) mainWindow = null;
+  });
   win.once('ready-to-show', () => {
     win.show();
     setImmediate(onShown);
@@ -102,7 +111,15 @@ function createWindow(onShown: () => void): void {
   }
 }
 
-void app.whenReady().then(() => {
+if (isSecondInstance) {
+  // The running kiosk gets 'second-instance' and focuses itself; this process touches nothing in userData.
+  app.quit();
+} else {
+  app.on('second-instance', () => focusExistingWindow(mainWindow));
+  void app.whenReady().then(startKiosk);
+}
+
+function startKiosk(): void {
   if (app.isPackaged) Menu.setApplicationMenu(null);
   // Only the camera (video capture) may ever be granted; never the microphone.
   session.defaultSession.setPermissionRequestHandler((_wc, permission, callback, details) =>
@@ -127,6 +144,6 @@ void app.whenReady().then(() => {
   deleteExpiredPhotos(queue, photosDir, Date.now());
   registerIpc(store, join(userData, 'overlays'), photosDir, queue, switches);
   createWindow(() => reportOrphanPhotos(queue, photosDir));
-});
+}
 
 app.on('window-all-closed', () => app.quit());
