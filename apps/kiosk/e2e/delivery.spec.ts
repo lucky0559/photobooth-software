@@ -2,6 +2,7 @@ import { _electron as electron, expect, test, type ElectronApplication, type Pag
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { E2E_MAIN } from './kiosk-app';
 
 const appDir = join(__dirname, '..');
 
@@ -26,7 +27,7 @@ test.afterEach(async () => {
 
 async function launch(fake: Record<string, unknown> = {}, env: Record<string, string> = {}): Promise<Page> {
   app = await electron.launch({
-    args: [appDir],
+    args: [E2E_MAIN],
     cwd: appDir,
     env: {
       ...process.env,

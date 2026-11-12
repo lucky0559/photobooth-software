@@ -17,9 +17,10 @@ import { BannerTitle } from './theme/components/BannerTitle';
 
 type Screen = 'loading' | 'setup' | 'pin' | 'kiosk';
 
-export function App({ api, auth }: { api: KioskApi; auth: SetupAuth | null }) {
+export function App({ api, auth, configWarnings = [] }: { api: KioskApi; auth: SetupAuth | null; configWarnings?: string[] }) {
   const [screen, setScreen] = useState<Screen>('loading');
   const [cameraId, setCameraId] = useState<string | null>(null);
+  const [recovered, setRecovered] = useState(false);
   const taps = useRef<number[]>([]);
   const queue = useRef<QueueRunner | null>(null);
 
@@ -39,7 +40,8 @@ export function App({ api, auth }: { api: KioskApi; auth: SetupAuth | null }) {
   const reload = (): void => {
     void window.kiosk.getConfig().then((cfg) => {
       setCameraId(cfg.cameraDeviceId);
-      setScreen(cfg.pinHash === null ? 'setup' : 'kiosk');
+      setRecovered(cfg.recoveredFromCorruption);
+      setScreen(cfg.pinSet ? 'kiosk' : 'setup');
     });
   };
   useEffect(reload, []);
@@ -52,7 +54,15 @@ export function App({ api, auth }: { api: KioskApi; auth: SetupAuth | null }) {
 
   return (
     <>
-      {screen === 'setup' && <Setup auth={auth} initialCameraId={cameraId} onDone={reload} />}
+      {screen === 'setup' && (
+        <Setup
+          auth={auth}
+          initialCameraId={cameraId}
+          recoveredFromCorruption={recovered}
+          configWarnings={configWarnings}
+          onDone={reload}
+        />
+      )}
       {screen === 'pin' && <PinPrompt onUnlock={() => setScreen('setup')} onCancel={() => setScreen('kiosk')} />}
       {screen === 'kiosk' && (
         <KioskFlow api={api} cameraId={cameraId} onSecretTap={onSecretTap} onEnqueued={kickQueue} />

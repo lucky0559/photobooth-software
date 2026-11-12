@@ -2,6 +2,7 @@ import { _electron as electron, expect, test, type ElectronApplication } from '@
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { E2E_MAIN } from './kiosk-app';
 
 const appDir = join(__dirname, '..');
 
@@ -20,7 +21,7 @@ test.afterEach(async () => {
 
 function launch(): Promise<ElectronApplication> {
   return electron.launch({
-    args: [appDir],
+    args: [E2E_MAIN],
     cwd: appDir,
     env: {
       ...process.env,

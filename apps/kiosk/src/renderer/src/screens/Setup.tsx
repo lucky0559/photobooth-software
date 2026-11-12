@@ -21,13 +21,21 @@ async function listCameras(): Promise<MediaDeviceInfo[]> {
   return devices.filter((d) => d.kind === 'videoinput');
 }
 
+/** Shown on Setup after a damaged `config.json` was moved aside and reset. */
+export const DAMAGED_SETTINGS_NOTICE = 'Settings file was damaged and reset. Check the printer and camera.';
+
 export function Setup({
   auth,
   initialCameraId,
+  recoveredFromCorruption = false,
+  configWarnings = [],
   onDone,
 }: {
   auth: SetupAuth | null;
   initialCameraId: string | null;
+  recoveredFromCorruption?: boolean;
+  /** Build-time variables that are missing but do not block the app (see checkEnv). */
+  configWarnings?: string[];
   onDone: () => void;
 }) {
   const [step, setStep] = useState<Step>('pin');
@@ -118,6 +126,10 @@ export function Setup({
   return (
     <main className="screen setup">
       <h1>Kiosk setup</h1>
+      {recoveredFromCorruption && <p className="staff-notice">{DAMAGED_SETTINGS_NOTICE}</p>}
+      {configWarnings.length > 0 && (
+        <p className="staff-detail">Not set or invalid (download QR disabled): {configWarnings.join(', ')}</p>
+      )}
 
       {step === 'pin' && (
         <form onSubmit={submitPin}>

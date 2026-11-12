@@ -2,6 +2,7 @@ import { _electron as electron, expect, test, type ElectronApplication, type Pag
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { E2E_MAIN } from './kiosk-app';
 
 const appDir = join(__dirname, '..');
 
@@ -29,7 +30,7 @@ test.afterEach(async () => {
 /** Launches with the fake strip template and runs a free 2-shot capture through to Review. */
 async function toReview(): Promise<Page> {
   app = await electron.launch({
-    args: [appDir],
+    args: [E2E_MAIN],
     cwd: appDir,
     env: {
       ...process.env,

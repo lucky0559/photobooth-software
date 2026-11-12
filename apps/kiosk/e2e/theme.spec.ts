@@ -2,6 +2,7 @@ import { _electron as electron, expect, test, type ElectronApplication, type Loc
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { E2E_MAIN } from './kiosk-app';
 
 const appDir = join(__dirname, '..');
 const shotsDir = join(appDir, 'test-results', 'theme');
@@ -31,7 +32,7 @@ test.afterEach(async () => {
 
 async function launch(viewport: { width: number; height: number }, settings = { freeMode: true }): Promise<Page> {
   app = await electron.launch({
-    args: [appDir],
+    args: [E2E_MAIN],
     cwd: appDir,
     env: {
       ...process.env,

@@ -2,6 +2,7 @@ import { _electron as electron, expect, test, type ElectronApplication } from '@
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { E2E_MAIN } from './kiosk-app';
 
 const appDir = join(__dirname, '..');
 
@@ -22,7 +23,7 @@ test.afterEach(async () => {
 
 test('Setup: pick the printer and send a test page (fake print, never a real printer)', async () => {
   app = await electron.launch({
-    args: [appDir],
+    args: [E2E_MAIN],
     cwd: appDir,
     env: {
       ...process.env,

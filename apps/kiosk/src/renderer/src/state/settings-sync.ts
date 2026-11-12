@@ -1,5 +1,5 @@
 import { DEFAULT_SETTINGS, formatPeso, type KioskSettings, type Template } from '@pb/core';
-import { DEFAULT_LOCAL_CONFIG, type KioskBridge } from '../../../shared/bridge';
+import { DEFAULT_LOCAL_CONFIG, toConfigView, type KioskBridge } from '../../../shared/bridge';
 import type { KioskApi } from '../api/kiosk-api';
 
 export type SyncApi = Pick<KioskApi, 'getSettings' | 'getTemplate'>;
@@ -19,7 +19,7 @@ export async function syncSettings(api: SyncApi, bridge: SyncBridge): Promise<Sy
   // Cache I/O failures are non-fatal: an unreadable cache counts as empty, a failed write is only logged.
   const config = await bridge.getConfig().catch((err: unknown) => {
     console.error('Reading cached settings failed', err);
-    return DEFAULT_LOCAL_CONFIG;
+    return toConfigView(DEFAULT_LOCAL_CONFIG);
   });
   let settings: KioskSettings;
   try {

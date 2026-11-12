@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { IPC, type KioskBridge } from '../shared/bridge';
 import { buildTestPageJpeg } from '../shared/test-page';
+import { testSwitches, UNPACKAGED_ARG } from '../shared/test-switches';
 
 const bridge: KioskBridge = {
   getConfig: () => ipcRenderer.invoke(IPC.getConfig),
@@ -22,11 +23,14 @@ const bridge: KioskBridge = {
 
 contextBridge.exposeInMainWorld('kiosk', bridge);
 
-// Test hook: initial FakeKioskApi config (JSON string). Only present when the launcher sets it.
-const fakeConfig = process.env.PB_FAKE_CONFIG;
-if (fakeConfig) contextBridge.exposeInMainWorld('__pbFakeConfig', fakeConfig);
-
-// Test hook: number of fake print calls the main process has recorded. Only when PB_FAKE_PRINT=1.
-if (process.env.PB_FAKE_PRINT === '1') {
-  contextBridge.exposeInMainWorld('__pbPrintCalls', () => ipcRenderer.invoke(IPC.debugPrintCalls));
+// Test hooks: compiled only into the e2e build, and only honored when the main process says the app is
+// not packaged (the flag is absent in a packaged app, so this fails closed).
+if (__PB_TEST_BUILD__) {
+  const switches = testSwitches(process.env, !process.argv.includes(UNPACKAGED_ARG));
+  // Initial FakeKioskApi config (JSON string).
+  if (switches.fakeConfig) contextBridge.exposeInMainWorld('__pbFakeConfig', switches.fakeConfig);
+  // Number of fake print calls the main process has recorded.
+  if (switches.fakePrint) {
+    contextBridge.exposeInMainWorld('__pbPrintCalls', () => ipcRenderer.invoke(IPC.debugPrintCalls));
+  }
 }

@@ -76,6 +76,23 @@ body,
   font-size: 32px;
 }
 
+/* Staff-only notices (Setup, not-configured screen). */
+.staff-notice {
+  color: #ffd166;
+  font-size: 28px;
+  margin: 0;
+  text-align: center;
+  max-width: 900px;
+}
+
+.staff-detail {
+  color: #aaa;
+  font-size: 22px;
+  margin: 0;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
 
 /* ---------- Guest screens (theme components live in theme/theme.css) ---------- */
 
