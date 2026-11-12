@@ -5,7 +5,7 @@ import { revalidatePath } from 'next/cache';
 import { imageSize } from 'image-size';
 import { TEMPLATE_MAX_BYTES, validateTemplateImage, type LayoutId, type Result, type Template } from '@pb/core';
 import { requireAdmin } from '@/lib/auth';
-import { hasPngSignature } from '@/lib/png';
+import { hasPngSignature, pngHasTransparency } from '@/lib/png';
 
 const BUCKET = 'templates';
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -50,7 +50,8 @@ export async function uploadTemplate(formData: FormData): Promise<Result<Templat
   if (bytes) {
     // Trust only the bytes: magic number first, then the IHDR dimensions.
     let meta: { width: number; height: number; mime: string } = { width: 0, height: 0, mime: 'application/octet-stream' };
-    if (hasPngSignature(bytes)) {
+    // An opaque PNG (no alpha channel, no tRNS) would hide the photos: treat it as "not a usable PNG".
+    if (hasPngSignature(bytes) && pngHasTransparency(bytes)) {
       try {
         const dims = imageSize(bytes);
         if (dims.type === 'png') meta = { width: dims.width, height: dims.height, mime: 'image/png' };
