@@ -1,4 +1,27 @@
-import { formatPeso } from '@pb/core';
+import { ATTENTION_AFTER_MS, formatPeso } from '@pb/core';
+
+/**
+ * Rows of a capped query (PostgREST max_rows is 1000) can only be summed when the exact count shows nothing was
+ * cut off; otherwise null, and the page shows its load error instead of a wrong total.
+ */
+export function allRowsOrNull<T>(rows: T[] | null, count: number | null): T[] | null {
+  if (rows === null || count === null || count > rows.length) return null;
+  return rows;
+}
+
+/** Refund signals must never silently disappear: say so when the list is capped. */
+export function attentionOverflowNote(shown: number, total: number | null): string | null {
+  return total !== null && total > shown ? `Showing the newest ${shown} of ${total}` : null;
+}
+
+/**
+ * PostgREST `or` filter matching core `needsAttention` exactly (paid after cancel, or paid more than
+ * ATTENTION_AFTER_MS ago), so the exact count is the number of flagged sessions.
+ */
+export function attentionFilter(now: Date): string {
+  const cutoff = new Date(now.getTime() - ATTENTION_AFTER_MS).toISOString();
+  return `status.eq.paid_after_cancel,and(status.eq.paid,created_at.lt."${cutoff}")`;
+}
 
 export const STATUS_LABELS: Record<string, string> = {
   awaiting_payment: 'Awaiting payment',

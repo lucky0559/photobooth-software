@@ -7,29 +7,40 @@ const MANILA_MS = 8 * 60 * MIN;
 const manilaDay = (d: Date | string) => new Date(new Date(d).getTime() + MANILA_MS).toISOString().slice(0, 10);
 const peso = (c: number) => `₱${Math.floor(c / 100).toLocaleString('en-PH')}.${String(c % 100).padStart(2, '0')}`;
 
+const DAY = 24 * 60 * MIN;
+
 const seeder = new Seeder();
 const ids: Record<string, string> = {};
+// The Manila day the seeds were made for; the page and the expectations both use it.
+let seedDay = '';
+let nearMidnight = false;
 
 test.beforeAll(async () => {
   const now = Date.now();
-  const startOfToday = new Date(`${manilaDay(new Date(now))}T00:00:00+08:00`).getTime();
+  seedDay = manilaDay(new Date(now));
+  const startOfToday = new Date(`${seedDay}T00:00:00+08:00`).getTime();
+  // Seeds made just before Manila midnight would be "yesterday" by the time the page loads: skip instead of flaking.
+  nearMidnight = startOfToday + DAY - now < 5 * MIN;
+  if (nearMidnight) return;
   const at = (ms: number) => new Date(ms);
+  // "Paid a few minutes ago" must still be today right after Manila midnight.
+  const todayAt = (ms: number) => at(Math.max(ms, startOfToday + 1000));
   const seed = async (name: string, s: Parameters<Seeder['session']>[0]) => {
     ids[name] = (await seeder.session(s)).id;
   };
 
   // Paid today (Manila): a completed sale, the paid-after-cancel and the stuck paid session below, and a payment at
   // exactly 00:00 Manila today. Paid one second before 00:00 Manila is yesterday.
-  await seed('paidToday', { status: 'completed', createdAt: at(now - 2 * MIN), payment: { amountCentavos: 15000, paidAt: at(now - MIN) } });
+  await seed('paidToday', { status: 'completed', createdAt: at(now - 2 * MIN), payment: { amountCentavos: 15000, paidAt: todayAt(now - MIN) } });
   await seed('midnight', { status: 'completed', createdAt: at(startOfToday - MIN), payment: { amountCentavos: 2500, paidAt: at(startOfToday) } });
   await seed('yesterday', {
     status: 'completed',
     createdAt: at(startOfToday - 2 * MIN),
     payment: { amountCentavos: 20000, paidAt: at(startOfToday - 1000) },
   });
-  await seed('paidAfterCancel', { status: 'paid_after_cancel', createdAt: at(now - 3 * MIN), payment: { amountCentavos: 15000, paidAt: at(now - MIN) } });
-  await seed('stuckPaid', { status: 'paid', createdAt: at(now - 15 * MIN), payment: { amountCentavos: 12000, paidAt: at(now - 14 * MIN) } });
-  await seed('freshPaid', { status: 'paid', createdAt: at(now - 2 * MIN), payment: { amountCentavos: 15000, paidAt: at(now - MIN) } });
+  await seed('paidAfterCancel', { status: 'paid_after_cancel', createdAt: at(now - 3 * MIN), payment: { amountCentavos: 15000, paidAt: todayAt(now - MIN) } });
+  await seed('stuckPaid', { status: 'paid', createdAt: at(now - 15 * MIN), payment: { amountCentavos: 12000, paidAt: todayAt(now - 14 * MIN) } });
+  await seed('freshPaid', { status: 'paid', createdAt: at(now - 2 * MIN), payment: { amountCentavos: 15000, paidAt: todayAt(now - MIN) } });
   await seed('freeCompleted', { status: 'completed', createdAt: at(now - 20 * MIN), printError: 'Printer offline (paper jam)' });
   // A kiosk-reported amount without a payment must never count as money.
   await seed('kioskClaims', { status: 'completed', createdAt: at(now - 4 * MIN), amountCentavos: 99900 });
@@ -43,10 +54,12 @@ test.afterAll(async () => {
 });
 
 test('the dashboard shows today’s paid sales, the refund list and recent sessions', async ({ page }) => {
+  test.skip(nearMidnight, 'within 5 minutes before Manila midnight: the page would already be on the next day');
   // Expected Today values straight from the payments table (also covers any rows not made by this test).
   const { data, error } = await serviceClient().from('payments').select('session_id, amount_centavos, paid_at').eq('status', 'paid');
   if (error) throw error;
-  const today = manilaDay(new Date());
+  const today = seedDay;
+  expect(manilaDay(new Date()), 'the Manila day changed during the test').toBe(today);
   const todays = data.filter((p) => manilaDay(p.paid_at as string) === today);
   const total = todays.reduce((sum, p) => sum + (p.amount_centavos as number), 0);
   const seededToday = todays.map((p) => p.session_id);
@@ -69,6 +82,9 @@ test('the dashboard shows today’s paid sales, the refund list and recent sessi
   const stuck = page.locator(`[data-testid="attention-list"] li[data-session-id="${ids.stuckPaid}"]`);
   await expect(stuck).toContainText('Paid but not completed — consider a refund');
   await expect(stuck).toContainText('₱120.00');
+  await expect(page.getByText("An offline booth's sessions appear here until it reconnects.")).toBeVisible();
+  // Fewer than 100 flagged sessions locally: no "Showing the newest 100 of N" note.
+  await expect(page.getByTestId('attention-overflow')).toHaveCount(0);
 
   // Last 50 sessions: Manila time, amount from the payment only, status, print error.
   const row = (name: string) => page.locator(`[data-testid="sessions-table"] tr[data-session-id="${ids[name]}"]`);
@@ -89,6 +105,7 @@ const VIEWPORTS = [
 ] as const;
 
 test('dashboard screenshots at phone and desktop width', async ({ page }) => {
+  test.skip(nearMidnight, 'no seeded sessions near Manila midnight');
   await signInAsAdmin(page);
   for (const vp of VIEWPORTS) {
     await page.setViewportSize({ width: vp.width, height: vp.height });

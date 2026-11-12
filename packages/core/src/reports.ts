@@ -3,7 +3,8 @@
 
 const MANILA_OFFSET_MS = 8 * 60 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
-const ATTENTION_AFTER_MS = 10 * 60 * 1000;
+/** A `paid` session older than this without reaching `completed` needs the operator's attention. */
+export const ATTENTION_AFTER_MS = 10 * 60 * 1000;
 
 /** The Asia/Manila calendar day of an ISO timestamp, as 'YYYY-MM-DD'. */
 export function manilaDayKey(iso: string): string {

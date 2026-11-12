@@ -2,6 +2,9 @@ import { formatPeso, manilaDayKey, needsAttention, summarizeDay } from '@pb/core
 import { requireAdmin } from '@/lib/auth';
 import {
   ATTENTION_LABELS,
+  allRowsOrNull,
+  attentionFilter,
+  attentionOverflowNote,
   formatManilaTime,
   onePayment,
   sessionAmountLabel,
@@ -13,6 +16,7 @@ export const dynamic = 'force-dynamic';
 
 const LOAD_ERROR = 'Could not load sales data. Refresh the page to try again.';
 const DAY_MS = 24 * 60 * 60 * 1000;
+const ATTENTION_LIMIT = 100;
 
 type SessionRow = {
   id: string;
@@ -46,31 +50,34 @@ export default async function Dashboard() {
   const dayEnd = new Date(dayStart.getTime() + DAY_MS);
 
   // Money comes only from server-written payments, grouped by paid_at in Asia/Manila.
+  // Exact counts: the Today total must never be a silently truncated sum, and capped refund signals are announced.
   const [paidToday, attention, recent] = await Promise.all([
     supabase
       .from('payments')
-      .select('amount_centavos, paid_at')
+      .select('amount_centavos, paid_at', { count: 'exact' })
       .eq('status', 'paid')
       .gte('paid_at', dayStart.toISOString())
       .lt('paid_at', dayEnd.toISOString()),
     supabase
       .from('sessions')
-      .select(SESSION_COLUMNS)
-      .in('status', ['paid', 'paid_after_cancel'])
+      .select(SESSION_COLUMNS, { count: 'exact' })
+      .or(attentionFilter(now))
       .order('created_at', { ascending: false })
-      .limit(100),
+      .limit(ATTENTION_LIMIT),
     supabase.from('sessions').select(SESSION_COLUMNS).order('created_at', { ascending: false }).limit(50),
   ]);
 
-  const summary = paidToday.error
-    ? null
-    : summarizeDay(
-        (paidToday.data ?? []).map((p) => ({ amountCentavos: p.amount_centavos as number, paidAt: p.paid_at as string })),
+  const paidRows = paidToday.error ? null : allRowsOrNull(paidToday.data ?? [], paidToday.count);
+  const summary = paidRows
+    ? summarizeDay(
+        paidRows.map((p) => ({ amountCentavos: p.amount_centavos as number, paidAt: p.paid_at as string })),
         today,
-      );
+      )
+    : null;
   const flagged = attention.error
     ? null
     : toSessionRows(attention.data ?? []).filter((s) => needsAttention({ status: s.status, createdAt: s.created_at }, now));
+  const overflow = flagged ? attentionOverflowNote(flagged.length, attention.count) : null;
   const sessions = recent.error ? null : toSessionRows(recent.data ?? []);
 
   return (
@@ -106,15 +113,23 @@ export default async function Dashboard() {
         ) : flagged.length === 0 ? (
           <p className="hint">Nothing needs attention.</p>
         ) : (
-          <ul className="attention-list" data-testid="attention-list">
-            {flagged.map((s) => (
-              <li key={s.id} data-session-id={s.id}>
-                <span className="attention-time">{formatManilaTime(s.created_at)}</span>
-                <span className="attention-amount">{sessionAmountLabel(s, s.payment)}</span>
-                <span className="attention-label">{ATTENTION_LABELS[s.status]}</span>
-              </li>
-            ))}
-          </ul>
+          <>
+            {overflow && (
+              <p className="hint" data-testid="attention-overflow">
+                {overflow}
+              </p>
+            )}
+            <ul className="attention-list" data-testid="attention-list">
+              {flagged.map((s) => (
+                <li key={s.id} data-session-id={s.id}>
+                  <span className="attention-time">{formatManilaTime(s.created_at)}</span>
+                  <span className="attention-amount">{sessionAmountLabel(s, s.payment)}</span>
+                  <span className="attention-label">{ATTENTION_LABELS[s.status]}</span>
+                </li>
+              ))}
+            </ul>
+            <p className="hint">An offline booth&apos;s sessions appear here until it reconnects.</p>
+          </>
         )}
       </section>
 
