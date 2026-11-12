@@ -64,6 +64,11 @@ class FakeStore implements PaymentStore {
   getStatus(paymentId: string): Promise<PaymentStatus | null> {
     return Promise.resolve(this.rows.get(paymentId)?.status ?? null);
   }
+
+  getForCancel(paymentId: string): Promise<{ intentId: string; kioskId: string; status: PaymentStatus } | null> {
+    const r = this.rows.get(paymentId);
+    return Promise.resolve(r ? { intentId: r.intentId, kioskId: r.kioskId, status: r.status } : null);
+  }
 }
 
 const T1 = '2026-11-12T01:00:00.000Z';
@@ -150,6 +155,55 @@ Deno.test('cancelPayment by another kiosk -> forbidden, nothing changes', async 
 
 Deno.test('cancelPayment on an unknown payment -> not_found', async () => {
   assertEquals(await cancelPayment(new FakeStore(), 'p-none', 'kiosk-a'), 'not_found');
+});
+
+// R19: cancel reconciles with PayMongo first (the webhook may never arrive).
+const succeeded = (seen: string[] = []) => (intentId: string) => {
+  seen.push(intentId);
+  return Promise.resolve(true);
+};
+const notSucceeded = () => Promise.resolve(false);
+
+Deno.test('cancelPayment: intent already succeeded (no webhook) -> paid, payment and session paid', async () => {
+  const s = new FakeStore();
+  const r = s.add('p1', 'pi_1', 'pending');
+  const seen: string[] = [];
+  assertEquals(await cancelPayment(s, 'p1', 'kiosk-a', succeeded(seen), T1), 'paid');
+  assertEquals([r.status, r.paidAt, r.session], ['paid', T1, 'paid']);
+  assertEquals(seen, ['pi_1']);
+});
+
+Deno.test('cancelPayment: intent not succeeded -> cancelled as before', async () => {
+  const s = new FakeStore();
+  const r = s.add('p1', 'pi_1', 'pending');
+  assertEquals(await cancelPayment(s, 'p1', 'kiosk-a', notSucceeded, T1), 'cancelled');
+  assertEquals([r.status, r.session], ['cancelled', 'cancelled']);
+});
+
+Deno.test('cancelPayment: retry after cancel, intent succeeded meanwhile -> paid, session paid_after_cancel', async () => {
+  const s = new FakeStore();
+  const r = s.add('p1', 'pi_1', 'pending');
+  assertEquals(await cancelPayment(s, 'p1', 'kiosk-a', notSucceeded, T1), 'cancelled');
+  assertEquals(await cancelPayment(s, 'p1', 'kiosk-a', succeeded(), T2), 'paid');
+  assertEquals([r.status, r.paidAt, r.session], ['paid', T2, 'paid_after_cancel']);
+});
+
+Deno.test('cancelPayment: another kiosk or an unknown payment never reaches PayMongo', async () => {
+  const s = new FakeStore();
+  const r = s.add('p1', 'pi_1', 'pending', 'kiosk-a');
+  const seen: string[] = [];
+  assertEquals(await cancelPayment(s, 'p1', 'kiosk-b', succeeded(seen), T1), 'forbidden');
+  assertEquals(await cancelPayment(s, 'p-none', 'kiosk-a', succeeded(seen), T1), 'not_found');
+  assertEquals(seen, []);
+  assertEquals(r.status, 'pending');
+});
+
+Deno.test('cancelPayment: an already paid payment is not looked up again', async () => {
+  const s = new FakeStore();
+  s.add('p1', 'pi_1', 'paid');
+  const seen: string[] = [];
+  assertEquals(await cancelPayment(s, 'p1', 'kiosk-a', succeeded(seen), T1), 'paid');
+  assertEquals(seen, []);
 });
 
 Deno.test('cancelPayment: a row that is neither cancellable nor final throws', async () => {

@@ -1,6 +1,8 @@
 // POST /functions/v1/create-payment  (kiosk JWT)
 // body { sessionId, downloadToken, templateId } → 200 { paymentId, qrImageDataUrl, amountCentavos }
 //                                               → 409 { error: 'free_mode' } when free mode is on
+//                                               → 409 { error: 'not_pending' } on a retry whose payment is already
+//                                                 cancelled or paid (its QR is never shown again)
 //
 // Order: authenticate → validate → (retry? return the stored QR) → amount from SERVER settings → PayMongo
 // (intent → method → attach) → one DB transaction (session + payment). If the DB step fails after PayMongo succeeded,
@@ -37,13 +39,13 @@ interface ExistingSession {
   kiosk_id: string;
   template_id: string;
   download_token: string;
-  payments: { id: string; amount_centavos: number; qr_image: string | null } | null;
+  payments: { id: string; amount_centavos: number; qr_image: string | null; status: string } | null;
 }
 
 async function findSession(db: SupabaseClient, sessionId: string): Promise<ExistingSession | null> {
   const { data, error } = await db
     .from('sessions')
-    .select('kiosk_id, template_id, download_token, payments(id, amount_centavos, qr_image)')
+    .select('kiosk_id, template_id, download_token, payments(id, amount_centavos, qr_image, status)')
     .eq('id', sessionId)
     .maybeSingle<ExistingSession>();
   if (error) throw error;
@@ -62,6 +64,9 @@ function replay(existing: ExistingSession, kioskId: string, input: Input): Respo
   ) {
     return json(409, { error: 'session_conflict' });
   }
+  // A cancelled or paid payment's QR is dead or already used: never show it again (the kiosk treats this like any
+  // create failure and starts over with a new session).
+  if (p.status === 'cancelled' || p.status === 'paid') return json(409, { error: 'not_pending' });
   return json(200, { paymentId: p.id, qrImageDataUrl: p.qr_image, amountCentavos: p.amount_centavos });
 }
 

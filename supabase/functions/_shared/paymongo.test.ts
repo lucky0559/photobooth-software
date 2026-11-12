@@ -1,10 +1,12 @@
 import { assertEquals, assertRejects } from '@std/assert';
 import {
   createQrPhPayment,
+  intentStatusFrom,
   parsePaidEvent,
   parseWebhookEvent,
   PayMongoError,
   qrImageDataUrlFrom,
+  retrievePaymentIntent,
   trimEvent,
   verifyWebhookSignature,
 } from './paymongo.ts';
@@ -201,6 +203,47 @@ Deno.test('createQrPhPayment: a PayMongo error or a hosted QR URL throws PayMong
     await assertRejects(() => createQrPhPayment({ ...args, amountCentavos: 1999 }), RangeError);
     await assertRejects(() => createQrPhPayment({ ...args, amountCentavos: 150.5 }), RangeError);
     assertEquals(stub.calls().createIntent, 0);
+  } finally {
+    await stub.close();
+  }
+});
+
+Deno.test('intentStatusFrom reads data.attributes.status; odd shapes -> null', () => {
+  assertEquals(intentStatusFrom({ data: { id: 'pi_1', attributes: { status: 'succeeded' } } }), 'succeeded');
+  assertEquals(intentStatusFrom(fixture('attach-qrph.json')), 'awaiting_next_action');
+  assertEquals(intentStatusFrom({ data: { attributes: { status: 42 } } }), null);
+  assertEquals(intentStatusFrom({ data: { attributes: { status: '' } } }), null);
+  assertEquals(intentStatusFrom({ data: { attributes: { status: 'x'.repeat(51) } } }), null);
+  assertEquals(intentStatusFrom(null), null);
+});
+
+Deno.test('retrievePaymentIntent: GET /v1/payment_intents/{id} returns the status the stub holds', async () => {
+  const stub = startPayMongoStub();
+  try {
+    const { intentId } = await createQrPhPayment({
+      secretKey: 'sk_test_unit',
+      amountCentavos: 15000,
+      description: 'x',
+      metadata: {},
+      apiBase: stub.url,
+    });
+    assertEquals(await retrievePaymentIntent('sk_test_unit', intentId, stub.url), { status: 'awaiting_next_action' });
+    stub.setIntentStatus(intentId, 'succeeded');
+    assertEquals(await retrievePaymentIntent('sk_test_unit', intentId, stub.url), { status: 'succeeded' });
+    assertEquals(stub.calls().retrieve, 2);
+    assertEquals(stub.calls().lastKey, 'sk_test_unit');
+  } finally {
+    await stub.close();
+  }
+});
+
+Deno.test('retrievePaymentIntent: unknown intent, forced failure or a missing key throws PayMongoError', async () => {
+  const stub = startPayMongoStub();
+  try {
+    await assertRejects(() => retrievePaymentIntent('sk_test_unit', 'pi_nope', stub.url), PayMongoError);
+    stub.failNext('retrieve', 500);
+    await assertRejects(() => retrievePaymentIntent('sk_test_unit', 'pi_nope', stub.url), PayMongoError);
+    await assertRejects(() => retrievePaymentIntent('', 'pi_nope', stub.url), PayMongoError);
   } finally {
     await stub.close();
   }

@@ -37,6 +37,15 @@ export async function service(): Promise<SupabaseClient> {
   return createClient(s.apiUrl, s.serviceKey, { auth: { persistSession: false, autoRefreshToken: false } });
 }
 
+/** A client acting as the signed-in user behind `jwt` (RLS and triggers apply, like the real kiosk). */
+export async function asUser(jwt: string): Promise<SupabaseClient> {
+  const s = await localStack();
+  return createClient(s.apiUrl, s.anonKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+    global: { headers: { authorization: `Bearer ${jwt}` } },
+  });
+}
+
 export async function signIn(email: string, password = 'localpass123'): Promise<{ jwt: string; userId: string }> {
   const s = await localStack();
   const res = await fetch(`${s.apiUrl}/auth/v1/token?grant_type=password`, {
@@ -92,7 +101,10 @@ export async function callFn(
   return { status: res.status, body, headers: res.headers };
 }
 
-export async function stub(path: '/__calls' | '/__reset' | '/__fail' | '/__image', body?: unknown): Promise<Record<string, unknown>> {
+export async function stub(
+  path: '/__calls' | '/__reset' | '/__fail' | '/__image' | '/__intent_status',
+  body?: unknown,
+): Promise<Record<string, unknown>> {
   const res = await fetch(`${STUB_URL}${path}`, {
     method: path === '/__calls' ? 'GET' : 'POST',
     headers: { 'content-type': 'application/json' },

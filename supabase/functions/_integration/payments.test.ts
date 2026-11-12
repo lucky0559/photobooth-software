@@ -2,7 +2,7 @@
 // stub in place of api.paymongo.com. Run: `deno task test:integration` from supabase/functions (see run.ts).
 import { assert, assertEquals, assertNotEquals } from '@std/assert';
 import { newDownloadToken } from '@pb/core';
-import { callFn, ENABLED, ensureUser, localStack, sendWebhook, service, signIn, stub, webhookEvent } from './helpers.ts';
+import { asUser, callFn, ENABLED, ensureUser, localStack, sendWebhook, service, signIn, stub, webhookEvent } from './helpers.ts';
 
 const TEMPLATE_ID = '00000000-0000-0000-0000-0000000057a1';
 /** Deliberately not the default 15000, so "amount from server settings" is visible. */
@@ -318,6 +318,105 @@ Deno.test({
             assertEquals(p.sessions.status, 'paid_after_cancel');
           }
         }
+      });
+
+      // R19: reconciliation with PayMongo at cancel time.
+      await t.step('cancel-payment: intent succeeded but the webhook never came -> paid; payment and session paid', async () => {
+        const { paymentId, intentId } = await created();
+        await stub('/__intent_status', { intentId, status: 'succeeded' });
+        const before = (await calls()) as unknown as { retrieve: number };
+        const r = await callFn('cancel-payment', { jwt: kioskA.jwt, body: { paymentId } });
+        assertEquals([r.status, r.body], [200, { status: 'paid' }]);
+        const p = await payment(paymentId);
+        assertEquals([p.status, p.sessions.status], ['paid', 'paid']);
+        assert(p.paid_at);
+        assertEquals(((await calls()) as unknown as { retrieve: number }).retrieve, before.retrieve + 1);
+        // A late webhook afterwards is a duplicate: nothing changes.
+        assertEquals((await sendWebhook(webhookEvent('payment.paid', intentId, PRICE))).status, 200);
+        assertEquals((await payment(paymentId)).paid_at, p.paid_at);
+      });
+
+      await t.step('cancel-payment: intent still awaiting payment -> cancelled as before', async () => {
+        const { paymentId } = await created();
+        const r = await callFn('cancel-payment', { jwt: kioskA.jwt, body: { paymentId } });
+        assertEquals(r.body, { status: 'cancelled' });
+        const p = await payment(paymentId);
+        assertEquals([p.status, p.sessions.status], ['cancelled', 'cancelled']);
+      });
+
+      await t.step('cancel-payment: PayMongo lookup fails -> still cancelled (an outage never fails cancel)', async () => {
+        const { paymentId, intentId } = await created();
+        await stub('/__intent_status', { intentId, status: 'succeeded' });
+        await stub('/__fail', { call: 'retrieve', status: 500 });
+        const r = await callFn('cancel-payment', { jwt: kioskA.jwt, body: { paymentId } });
+        assertEquals([r.status, r.body], [200, { status: 'cancelled' }]);
+        assertEquals((await payment(paymentId)).status, 'cancelled');
+      });
+
+      await t.step('cancel-payment: another kiosk never triggers a PayMongo lookup', async () => {
+        const { paymentId, intentId } = await created();
+        await stub('/__intent_status', { intentId, status: 'succeeded' });
+        const before = ((await calls()) as unknown as { retrieve: number }).retrieve;
+        const byB = await callFn('cancel-payment', { jwt: kioskB.jwt, body: { paymentId } });
+        assertEquals([byB.status, byB.body], [403, { error: 'forbidden' }]);
+        assertEquals(((await calls()) as unknown as { retrieve: number }).retrieve, before);
+        assertEquals((await payment(paymentId)).status, 'pending');
+      });
+
+      // R18: a guest who paid during the kiosk's cancel retry window was served; the kiosk's `completed` upsert lands.
+      const kioskUpsertCompleted = async (input: { sessionId: string; downloadToken: string; templateId: string }) => {
+        const kiosk = await asUser(kioskA.jwt);
+        return await kiosk.from('sessions').upsert({
+          id: input.sessionId,
+          template_id: input.templateId,
+          download_token: input.downloadToken,
+          amount_centavos: 15000, // stale cached price: healed to the stored amount by the guard
+          status: 'completed',
+          print_error: null,
+          created_at: new Date().toISOString(),
+          completed_at: new Date().toISOString(),
+        });
+      };
+
+      await t.step('cancel -> late webhook paid (paid_after_cancel) -> kiosk upsert completed succeeds', async () => {
+        const { input, paymentId, intentId } = await created();
+        assertEquals((await callFn('cancel-payment', { jwt: kioskA.jwt, body: { paymentId } })).body, { status: 'cancelled' });
+        assertEquals((await sendWebhook(webhookEvent('payment.paid', intentId, PRICE))).status, 200);
+        assertEquals((await payment(paymentId)).sessions.status, 'paid_after_cancel');
+        const { error } = await kioskUpsertCompleted(input);
+        assertEquals(error, null);
+        const p = await payment(paymentId);
+        assertEquals([p.status, p.sessions.status, p.sessions.amount_centavos], ['paid', 'completed', PRICE]);
+      });
+
+      await t.step('cancel -> intent succeeds, no webhook -> cancel retry says paid -> kiosk completes', async () => {
+        const { input, paymentId, intentId } = await created();
+        assertEquals((await callFn('cancel-payment', { jwt: kioskA.jwt, body: { paymentId } })).body, { status: 'cancelled' });
+        await stub('/__intent_status', { intentId, status: 'succeeded' });
+        assertEquals((await callFn('cancel-payment', { jwt: kioskA.jwt, body: { paymentId } })).body, { status: 'paid' });
+        assertEquals((await payment(paymentId)).sessions.status, 'paid_after_cancel');
+        assertEquals((await kioskUpsertCompleted(input)).error, null);
+        assertEquals((await payment(paymentId)).sessions.status, 'completed');
+      });
+
+      await t.step('cancelled session (never paid): kiosk upsert completed is still rejected', async () => {
+        const { input, paymentId } = await created();
+        assertEquals((await callFn('cancel-payment', { jwt: kioskA.jwt, body: { paymentId } })).body, { status: 'cancelled' });
+        const { error } = await kioskUpsertCompleted(input);
+        assert(error, 'expected the guard to reject');
+        assertEquals((await payment(paymentId)).sessions.status, 'cancelled');
+      });
+
+      // M8: a retry for a session whose payment is no longer pending never shows the old QR.
+      await t.step('create-payment replay after cancel or paid -> 409 not_pending', async () => {
+        const c = await created();
+        await callFn('cancel-payment', { jwt: kioskA.jwt, body: { paymentId: c.paymentId } });
+        const afterCancel = await callFn('create-payment', { jwt: kioskA.jwt, body: c.input });
+        assertEquals([afterCancel.status, afterCancel.body], [409, { error: 'not_pending' }]);
+        const p = await created();
+        await sendWebhook(webhookEvent('payment.paid', p.intentId, PRICE));
+        const afterPaid = await callFn('create-payment', { jwt: kioskA.jwt, body: p.input });
+        assertEquals([afterPaid.status, afterPaid.body], [409, { error: 'not_pending' }]);
       });
 
       await t.step('cancel-payment: other kiosk 403, admin 403, no JWT 401, unknown 404, bad input 400', async () => {

@@ -73,6 +73,9 @@ class MemStore implements WebhookStore {
   getStatus() {
     return Promise.resolve(this.status);
   }
+  getForCancel() {
+    return Promise.resolve({ intentId: 'pi_1', kioskId: 'kiosk-a', status: this.status });
+  }
   recordEvent(intentId: string, event: TrimmedEvent) {
     this.check();
     if (intentId !== 'pi_1') return Promise.resolve(null);
@@ -142,4 +145,16 @@ Deno.test('webhook: an old but correctly signed delivery is applied; a bad signa
     body: paidBody('pi_1', 15000),
   });
   assertEquals((await handlerFor(new MemStore())(bad)).status, 401);
+});
+
+Deno.test('webhook: a rejected signature logs exactly one fixed line (no body, headers or secret)', async () => {
+  const body = paidBody('pi_1', 15000);
+  const bad = new Request('http://local/paymongo-webhook', {
+    method: 'POST',
+    headers: { 'paymongo-signature': `t=1,te=${'0'.repeat(64)},li=` },
+    body,
+  });
+  const { result, lines } = await captureConsole(() => handlerFor(new MemStore())(bad));
+  assertEquals(result.status, 401);
+  assertEquals(lines, ['webhook: signature rejected']);
 });

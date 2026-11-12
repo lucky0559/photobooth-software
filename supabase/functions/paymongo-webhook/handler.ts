@@ -37,6 +37,9 @@ export function webhookHandler(deps: () => WebhookDeps): (req: Request) => Promi
 
       const raw = await readBodyText(req, MAX_BODY_BYTES);
       if (!(await verifyWebhookSignature(req.headers.get('paymongo-signature') ?? '', raw, secret, mode))) {
+        // One fixed line (no body, headers or secret) so a wrong PAYMONGO_WEBHOOK_SECRET / PAYMONGO_MODE or an
+        // attacker is visible in the function logs (docs/DEPLOY.md, webhook health check).
+        console.warn('webhook: signature rejected');
         return json(401, { error: 'invalid_signature' }, false);
       }
 

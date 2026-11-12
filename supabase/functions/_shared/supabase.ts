@@ -87,6 +87,18 @@ export class SupabasePaymentStore implements PaymentStore {
     return data ? asStatus(data.status) : null;
   }
 
+  async getForCancel(paymentId: string): Promise<{ intentId: string; kioskId: string; status: PaymentStatus } | null> {
+    const { data, error } = await this.db
+      .from('payments')
+      .select('provider_intent_id, status, sessions(kiosk_id)')
+      .eq('id', paymentId)
+      .maybeSingle<{ provider_intent_id: string; status: string; sessions: { kiosk_id: string } | null }>();
+    if (error) throw error;
+    const status = data ? asStatus(data.status) : null;
+    if (!data || !status || !data.sessions) return null;
+    return { intentId: data.provider_intent_id, kioskId: data.sessions.kiosk_id, status };
+  }
+
   /** Trimmed webhook event, for the operator; returns the stored amount (null: no payment for that intent). */
   async recordEvent(intentId: string, event: TrimmedEvent): Promise<number | null> {
     const { data, error } = await this.db

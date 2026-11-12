@@ -12,11 +12,16 @@
 //   - Webhook type:      event body               `data.attributes.type`                      (`payment.paid` …)
 //   - Webhook intent id: event body               `data.attributes.data.attributes.payment_intent_id`
 //   - Webhook amount:    event body               `data.attributes.data.attributes.amount`    (centavos)
+//   - Intent status:     retrieve response        `data.attributes.status`                    (GET /v1/payment_intents/{id};
+//                        docs list awaiting_payment_method, awaiting_next_action, processing, succeeded, cancelled;
+//                        only `succeeded` counts as paid — used by cancel-payment to reconcile a lost webhook)
 //
 // Sources (read 2026-11-12): https://docs.paymongo.com/docs/payment-acceptance-qr-ph-api,
 // https://docs.paymongo.com/reference/create-a-paymentintent, https://docs.paymongo.com/reference/create-a-paymentmethod,
 // https://docs.paymongo.com/reference/attach-to-paymentintent, https://docs.paymongo.com/docs/developer-tools-webhooks-events,
-// https://docs.paymongo.com/docs/developer-tools-webhook-setup-management (Securing a webhook).
+// https://docs.paymongo.com/docs/developer-tools-webhook-setup-management (Securing a webhook),
+// https://docs.paymongo.com/reference/retrieve-a-paymentintent and https://docs.paymongo.com/reference/the-payment-intent-object
+// (read 2026-11-12: retrieve with the secret key; status values as listed above).
 //
 // Signature (docs): header `Paymongo-Signature: t=<unix ts>,te=<test sig>,li=<live sig>`; signature = HMAC-SHA256 with
 // the webhook's secret key over `${t}.${rawBody}`. The docs do not name the encoding; hex is assumed (64 hex chars).
@@ -24,12 +29,20 @@
 // retries with the original `t` after an outage, an age limit would reject the late `payment.paid` and lose it. Every
 // state change is idempotent and a signed body names exactly one intent, so a replay changes nothing.
 
-/** PayMongo's own minimum is 100 centavos; the product (and the DB CHECK on settings) requires ₱20.00. */
+/**
+ * ₱20 per our own validation (the DB CHECK on settings and this check). PayMongo's own minimum must be confirmed in the
+ * real test run (docs/ACCEPTANCE.md, Task 5).
+ */
 export const MIN_AMOUNT_CENTAVOS = 2000;
 export const MAX_AMOUNT_CENTAVOS = 100000;
 /** Seconds a QR stays payable after attach (docs: 60–9000, default 1800). Kiosk payment window is 180 s. */
 export const QR_EXPIRY_SECONDS = 300;
 const CALL_TIMEOUT_MS = 10_000;
+/**
+ * The intent lookup runs inside cancel-payment, whose kiosk caller counts a call as failed after 8 s (and retries);
+ * 5 s keeps a stalled PayMongo from pushing every cancel past that.
+ */
+const RETRIEVE_TIMEOUT_MS = 5_000;
 const MAX_QR_DATA_URL_LENGTH = 1_000_000;
 const MAX_ID_LENGTH = 255;
 
@@ -115,6 +128,15 @@ export function trimEvent(body: unknown): TrimmedEvent {
   };
 }
 
+/** `data.attributes.status` of a retrieve-intent response (`succeeded` = paid), or null when missing or odd. */
+export function intentStatusFrom(response: unknown): string | null {
+  const status = at(response, 'data', 'attributes', 'status');
+  return typeof status === 'string' && status.length > 0 && status.length <= 50 ? status : null;
+}
+
+/** The intent status that means the guest paid. */
+export const INTENT_SUCCEEDED = 'succeeded';
+
 export function parsePaidEvent(body: unknown): { intentId: string; amountCentavos: number } | null {
   const ev = parseWebhookEvent(body);
   if (ev?.type !== 'payment.paid' || ev.intentId === null) return null;
@@ -131,18 +153,25 @@ export function payMongoApiBase(): string {
   return (Deno.env.get('PAYMONGO_API_BASE') || 'https://api.paymongo.com').replace(/\/+$/, '');
 }
 
-async function call(apiBase: string, secretKey: string, path: string, attributes: Record<string, unknown>): Promise<unknown> {
+/** POST `{ data: { attributes } }` to `path`, or GET it when `attributes` is null. */
+async function call(
+  apiBase: string,
+  secretKey: string,
+  path: string,
+  attributes: Record<string, unknown> | null,
+  timeoutMs = CALL_TIMEOUT_MS,
+): Promise<unknown> {
   let res: Response;
   try {
     res = await fetch(`${apiBase}${path}`, {
-      method: 'POST',
+      method: attributes === null ? 'GET' : 'POST',
       headers: {
-        'content-type': 'application/json',
+        ...(attributes === null ? {} : { 'content-type': 'application/json' }),
         accept: 'application/json',
         authorization: `Basic ${btoa(`${secretKey}:`)}`,
       },
-      body: JSON.stringify({ data: { attributes } }),
-      signal: AbortSignal.timeout(CALL_TIMEOUT_MS),
+      body: attributes === null ? undefined : JSON.stringify({ data: { attributes } }),
+      signal: AbortSignal.timeout(timeoutMs),
     });
   } catch (err) {
     throw new PayMongoError(`PayMongo ${path} unreachable: ${err instanceof Error ? err.name : 'error'}`);
@@ -212,6 +241,25 @@ export async function createQrPhPayment(args: {
   const qrImageDataUrl = qrImageDataUrlFrom(attached);
   if (!qrImageDataUrl) throw new PayMongoError('PayMongo attach response has no inline QR image');
   return { intentId, qrImageDataUrl };
+}
+
+/**
+ * Retrieves a payment intent (GET /v1/payment_intents/{id}, secret key, 5 s timeout) and returns its status.
+ * Throws PayMongoError on any provider problem or a response without a usable `data.attributes.status`.
+ */
+export async function retrievePaymentIntent(
+  secretKey: string,
+  intentId: string,
+  /** Defaults to env PAYMONGO_API_BASE, else https://api.paymongo.com. */
+  apiBase?: string,
+): Promise<{ status: string }> {
+  if (!secretKey) throw new PayMongoError('PayMongo secret key is not configured');
+  if (!isId(intentId)) throw new PayMongoError('invalid intent id');
+  const res = await call(apiBase ?? payMongoApiBase(), secretKey, `/v1/payment_intents/${encodeURIComponent(intentId)}`, null, RETRIEVE_TIMEOUT_MS);
+  if (resourceIdFrom(res) !== intentId) throw new PayMongoError('PayMongo retrieve returned another intent');
+  const status = intentStatusFrom(res);
+  if (!status) throw new PayMongoError('PayMongo intent response has no data.attributes.status');
+  return { status };
 }
 
 // ---------------------------------------------------------------------------
