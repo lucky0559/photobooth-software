@@ -1,6 +1,6 @@
 import type { SessionSync } from '@pb/core';
 import { TEMPLATE_ID_PATTERN } from '../shared/bridge';
-import { UUID_PATTERN, type QueueJob, type QueueResult } from '../shared/queue';
+import { MAX_PRINT_ERROR_CHARS, truncatePrintError, UUID_PATTERN, type QueueJob, type QueueResult } from '../shared/queue';
 import { photoPath, type CompletedUpload } from './photos';
 
 /** Shape of `<userData>/queue.json`. */
@@ -12,7 +12,7 @@ export interface QueueFile {
 export const EMPTY_QUEUE: QueueFile = { jobs: [], completedUploads: [] };
 
 const MAX_JOBS_PER_ADD = 10;
-const MAX_ERROR_CHARS = 500;
+const MAX_ERROR_CHARS = MAX_PRINT_ERROR_CHARS;
 const TOKEN_PATTERN = /^[A-Za-z0-9_-]{22}$/;
 const ISO_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?Z$/;
 
@@ -34,10 +34,11 @@ function validateRow(r: unknown): SessionSync {
     fail('amount');
   }
   if (status !== 'free' && status !== 'completed') fail('status');
-  if (printError !== null && (typeof printError !== 'string' || printError.length > MAX_ERROR_CHARS)) fail('print error');
+  if (printError !== null && typeof printError !== 'string') fail('print error');
   if (!isIso(createdAt)) fail('createdAt');
   if (completedAt !== null && !isIso(completedAt)) fail('completedAt');
-  return { id, downloadToken, templateId, amountCentavos, status, printError, createdAt, completedAt };
+  // Too long is cut, not rejected: rejecting would make a guest see an error for an already queued photo.
+  return { id, downloadToken, templateId, amountCentavos, status, printError: printError === null ? null : truncatePrintError(printError), createdAt, completedAt };
 }
 
 /** Validates untrusted `queueAdd` input. Returned jobs are due now with no attempts. */

@@ -32,6 +32,19 @@ describe('validateQueueJobs', () => {
     const r = { ...row, status: 'free', amountCentavos: 0, printError: 'out of paper' };
     expect(validateQueueJobs([{ ...upsertJob, row: r }], dir)[0]).toMatchObject({ row: r });
   });
+  it('truncates a 2,000-character print error to <= 500 chars instead of rejecting', () => {
+    const [job] = validateQueueJobs([{ ...upsertJob, row: { ...row, printError: 'x'.repeat(2000) } }], dir);
+    const err = (job as Extract<QueueJob, { kind: 'upsert_session' }>).row.printError!;
+    expect(err.length).toBeLessThanOrEqual(500);
+    expect(err.endsWith('…')).toBe(true);
+    expect(err.startsWith('xxx')).toBe(true);
+  });
+  it('leaves null, short and exactly-500 print errors unchanged', () => {
+    for (const printError of [null, 'out of paper', 'y'.repeat(500)]) {
+      const [job] = validateQueueJobs([{ ...upsertJob, row: { ...row, printError } }], dir);
+      expect((job as Extract<QueueJob, { kind: 'upsert_session' }>).row.printError).toBe(printError);
+    }
+  });
   it('drops unknown extra row fields', () => {
     const [job] = validateQueueJobs([{ ...upsertJob, row: { ...row, evil: 1 } }], dir);
     expect((job as Extract<QueueJob, { kind: 'upsert_session' }>).row).toEqual(row);
@@ -49,7 +62,7 @@ describe('validateQueueJobs', () => {
     ['fractional amount', [{ ...upsertJob, row: { ...row, amountCentavos: 1.5 } }]],
     ['huge amount', [{ ...upsertJob, row: { ...row, amountCentavos: 100_001 } }]],
     ['bad status', [{ ...upsertJob, row: { ...row, status: 'paid' } }]],
-    ['long print error', [{ ...upsertJob, row: { ...row, printError: 'x'.repeat(501) } }]],
+    ['non-string print error', [{ ...upsertJob, row: { ...row, printError: 5 } }]],
     ['bad createdAt', [{ ...upsertJob, row: { ...row, createdAt: 'yesterday' } }]],
     ['bad completedAt', [{ ...upsertJob, row: { ...row, completedAt: 5 } }]],
     ['upload outside photos dir', [{ ...uploadJob, filePath: '/etc/passwd' }]],

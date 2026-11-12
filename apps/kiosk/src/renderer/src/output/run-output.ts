@@ -1,6 +1,6 @@
 import type { SessionSync } from '@pb/core';
 import type { KioskBridge } from '../../../shared/bridge';
-import type { QueueJob } from '../../../shared/queue';
+import { truncatePrintError, type QueueJob } from '../../../shared/queue';
 
 export interface OutputDeps {
   /** Composes the 1200×1800 print sheet JPEG. */
@@ -37,7 +37,7 @@ export async function runOutput(d: OutputDeps): Promise<{ printError: string | n
     templateId,
     amountCentavos,
     status: amountCentavos === 0 ? 'free' : 'completed',
-    printError,
+    printError: printError === null ? null : truncatePrintError(printError),
     createdAt,
     completedAt: new Date(d.now()).toISOString(),
   });

@@ -80,6 +80,15 @@ describe('runOutput', () => {
     expect(jobs[2]).toMatchObject({ row: { printError: 'out of paper' } });
   });
 
+  it('truncates a very long print error on the queued row but still returns it whole', async () => {
+    const d = deps();
+    d.bridge.print.mockResolvedValue({ ok: false, reason: 'z'.repeat(2000) } as never);
+    const r = await runOutput(d);
+    expect(r.printError).toHaveLength(2000);
+    const last = added(d).slice(-1)[0] as Extract<QueueJob, { kind: 'upsert_session' }>;
+    expect(last.row.printError!.length).toBeLessThanOrEqual(500);
+  });
+
   it('a rejected print call counts as a print failure', async () => {
     const d = deps();
     d.bridge.print.mockRejectedValue(new Error('ipc broke'));
