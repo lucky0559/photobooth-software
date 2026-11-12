@@ -13,6 +13,11 @@ describe('registerTap', () => {
     expect(registerTap([0, 100, 200, 300], 3200).triggered).toBe(false);
   });
 
+  it('drops a tap exactly 3000 ms old and counts one 2999 ms old', () => {
+    expect(registerTap([0, 1, 2, 3], 3000)).toEqual({ taps: [1, 2, 3, 3000], triggered: false });
+    expect(registerTap([0, 1, 2, 3], 2999)).toEqual({ taps: [], triggered: true });
+  });
+
   it('does not trigger on 4 taps', () => {
     expect(registerTap([0, 100, 200], 300)).toEqual({ taps: [0, 100, 200, 300], triggered: false });
   });

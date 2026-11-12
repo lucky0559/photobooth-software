@@ -43,8 +43,19 @@ export function defaultFakeConfig(): FakeConfig {
 export function parseFakeConfig(json: string | undefined): FakeConfig {
   const base = defaultFakeConfig();
   if (!json) return base;
-  const parsed = JSON.parse(json) as Partial<FakeConfig>;
-  return { ...base, ...parsed, settings: { ...parsed.settings } };
+  const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(json);
+  } catch {
+    parsed = undefined;
+  }
+  if (!isObject(parsed) || (parsed.settings !== undefined && !isObject(parsed.settings))) {
+    console.error('PB_FAKE_CONFIG is not a JSON object; using the default fake config');
+    return base;
+  }
+  const cfg = parsed as Partial<FakeConfig>;
+  return { ...base, ...cfg, settings: { ...cfg.settings } };
 }
 
 /** Transparent PNG of the layout canvas with a colored footer band. */

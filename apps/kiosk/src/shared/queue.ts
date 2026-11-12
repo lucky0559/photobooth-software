@@ -17,7 +17,11 @@ export const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0
 /** The database allows 1000 chars; the kiosk keeps 500. */
 export const MAX_PRINT_ERROR_CHARS = 500;
 
-/** Cuts a print error to at most `MAX_PRINT_ERROR_CHARS` (ending in `…` when cut). */
+/** Cuts a print error to at most `MAX_PRINT_ERROR_CHARS` (ending in `…` when cut), never splitting a surrogate pair. */
 export function truncatePrintError(e: string): string {
-  return e.length <= MAX_PRINT_ERROR_CHARS ? e : `${e.slice(0, MAX_PRINT_ERROR_CHARS - 1)}…`;
+  if (e.length <= MAX_PRINT_ERROR_CHARS) return e;
+  let head = e.slice(0, MAX_PRINT_ERROR_CHARS - 1);
+  const last = head.charCodeAt(head.length - 1);
+  if (last >= 0xd800 && last <= 0xdbff) head = head.slice(0, -1);
+  return `${head}…`;
 }

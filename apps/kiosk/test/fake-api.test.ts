@@ -1,5 +1,5 @@
 import { DEFAULT_SETTINGS } from '@pb/core';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { FakeKioskApi, parseFakeConfig, type FakeConfig } from '../src/renderer/src/api/fake-api';
 
 const input = { sessionId: 's1', downloadToken: 't', templateId: 'fake-strip' };
@@ -24,6 +24,15 @@ describe('FakeKioskApi', () => {
       cancelReturns: 'cancelled',
       failUploads: 0,
     });
+  });
+
+  it('falls back to defaults (and logs) on bad PB_FAKE_CONFIG JSON', () => {
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    expect(parseFakeConfig('{ not json')).toEqual(parseFakeConfig(undefined));
+    expect(parseFakeConfig('"a string"')).toEqual(parseFakeConfig(undefined));
+    expect(parseFakeConfig('{"settings":"oops"}')).toEqual(parseFakeConfig(undefined));
+    expect(err).toHaveBeenCalledTimes(3);
+    err.mockRestore();
   });
 
   it('pays after payAfterMs and reads config live', async () => {
