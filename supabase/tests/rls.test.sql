@@ -3,7 +3,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 
-select plan(71);
+select plan(72);
 
 -- ---------------------------------------------------------------------------
 -- Fixtures (as the migration owner, bypassing RLS)
@@ -181,11 +181,15 @@ select throws_ok(
   '23514', null,
   'print_error is capped at 1000 characters');
 
--- Fix round 1: server-owned statuses
-select throws_ok(
+-- Fix round 1: server-owned statuses. Final fix wave (R18): a paid_after_cancel session whose payment is paid for
+-- the session amount was served by the kiosk and may be completed (more cases in final_fixes.test.sql).
+select lives_ok(
   $$ update public.sessions set status = 'completed' where id = 'a0000000-0000-0000-0000-000000000008' $$,
-  'P0001', 'kiosk may not change the status of a cancelled session',
-  'kiosk cannot complete a paid_after_cancel session');
+  'kiosk can complete a paid_after_cancel session whose payment is paid');
+
+select is(
+  (select status from public.sessions where id = 'a0000000-0000-0000-0000-000000000008'), 'completed',
+  'paid_after_cancel session is now completed');
 
 select throws_ok(
   $$ update public.sessions set status = 'free' where id = 'a0000000-0000-0000-0000-000000000009' $$,
