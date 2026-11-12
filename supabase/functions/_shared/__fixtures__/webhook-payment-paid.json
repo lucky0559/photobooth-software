@@ -1,0 +1,51 @@
+{
+  "data": {
+    "id": "evt_SyntheticFixture00000001",
+    "type": "event",
+    "attributes": {
+      "type": "payment.paid",
+      "livemode": false,
+      "data": {
+        "id": "pay_SyntheticFixture00000001",
+        "type": "payment",
+        "attributes": {
+          "access_url": null,
+          "amount": 15000,
+          "balance_transaction_id": "bal_txn_SyntheticFixture0001",
+          "billing": null,
+          "currency": "PHP",
+          "description": "Photobooth session",
+          "disputed": false,
+          "external_reference_number": null,
+          "fee": 0,
+          "livemode": false,
+          "net_amount": 15000,
+          "origin": "api",
+          "payment_intent_id": "pi_SyntheticFixture0000000001",
+          "payout": null,
+          "source": {
+            "id": "src_SyntheticFixture00000001",
+            "type": "qrph"
+          },
+          "statement_descriptor": "Photobooth",
+          "status": "paid",
+          "tax_amount": null,
+          "metadata": {
+            "session_id": "00000000-0000-4000-8000-000000000001",
+            "kiosk_id": "00000000-0000-0000-0000-00000000c105"
+          },
+          "refunds": [],
+          "taxes": [],
+          "available_at": 1763164800,
+          "created_at": 1762900100,
+          "credited_at": 1763251200,
+          "paid_at": 1762900100,
+          "updated_at": 1762900100
+        }
+      },
+      "previous_data": {},
+      "created_at": 1762900100,
+      "updated_at": 1762900100
+    }
+  }
+}

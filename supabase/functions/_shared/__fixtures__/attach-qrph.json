@@ -1,0 +1,37 @@
+{
+  "data": {
+    "id": "pi_SyntheticFixture0000000001",
+    "type": "payment_intent",
+    "attributes": {
+      "amount": 15000,
+      "original_amount": 15000,
+      "capture_type": "automatic",
+      "client_key": "pi_SyntheticFixture0000000001_client_SyntheticClientKey00",
+      "currency": "PHP",
+      "description": "Photobooth session",
+      "livemode": false,
+      "statement_descriptor": "Photobooth",
+      "status": "awaiting_next_action",
+      "last_payment_error": null,
+      "payment_method_allowed": ["qrph"],
+      "payments": [],
+      "next_action": {
+        "type": "consume_qr",
+        "code": {
+          "id": "code_SyntheticFixture000001",
+          "amount": 15000,
+          "label": "Photobooth session",
+          "image_url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+        }
+      },
+      "payment_method_options": null,
+      "metadata": {
+        "session_id": "00000000-0000-4000-8000-000000000001",
+        "kiosk_id": "00000000-0000-0000-0000-00000000c105"
+      },
+      "setup_future_usage": null,
+      "created_at": 1762900000,
+      "updated_at": 1762900001
+    }
+  }
+}

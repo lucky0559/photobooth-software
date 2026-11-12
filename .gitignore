@@ -12,5 +12,7 @@ test-results/
 !.env.example
 supabase/.env.local
 supabase/.temp/
+# Generated copy of packages/core for Edge Functions (scripts/sync-core-to-functions.mjs)
+supabase/functions/_shared/core/
 .superpowers/
 .DS_Store
