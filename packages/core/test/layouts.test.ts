@@ -54,4 +54,29 @@ describe('layouts', () => {
     expect(coverFit({ w: 1920, h: 1080 }, { w: 520, h: 1500 })).toEqual({ sx: 773, sy: 0, sw: 374, sh: 1080 });
     expect(coverFit({ w: 1080, h: 1920 }, { w: 1120, h: 690 })).toEqual({ sx: 0, sy: 628, sw: 1080, sh: 665 });
   });
+
+  it('coverFit uses the whole source when the aspect ratios are equal', () => {
+    expect(coverFit({ w: 1920, h: 1080 }, { w: 640, h: 360 })).toEqual({ sx: 0, sy: 0, sw: 1920, sh: 1080 });
+    expect(coverFit({ w: 600, h: 600 }, { w: 1200, h: 1200 })).toEqual({ sx: 0, sy: 0, sw: 600, sh: 600 });
+  });
+
+  it('coverFit returns the full source rect for a zero-size or invalid destination', () => {
+    const full = { sx: 0, sy: 0, sw: 1920, sh: 1080 };
+    expect(coverFit({ w: 1920, h: 1080 }, { w: 0, h: 0 })).toEqual(full);
+    expect(coverFit({ w: 1920, h: 1080 }, { w: 520, h: 0 })).toEqual(full);
+    expect(coverFit({ w: 1920, h: 1080 }, { w: -5, h: 360 })).toEqual(full);
+    expect(coverFit({ w: 1920, h: 1080 }, { w: Number.NaN, h: 360 })).toEqual(full);
+    expect(coverFit({ w: 1920, h: 1080 }, { w: Infinity, h: 360 })).toEqual(full);
+  });
+
+  it('coverFit returns an empty rect (never NaN) for a zero-size or invalid source', () => {
+    const empty = { sx: 0, sy: 0, sw: 0, sh: 0 };
+    expect(coverFit({ w: 0, h: 0 }, { w: 520, h: 360 })).toEqual(empty);
+    expect(coverFit({ w: 1920, h: 0 }, { w: 520, h: 360 })).toEqual(empty);
+    expect(coverFit({ w: Number.NaN, h: 1080 }, { w: 520, h: 360 })).toEqual(empty);
+    expect(coverFit({ w: 0, h: 0 }, { w: 0, h: 0 })).toEqual(empty);
+    for (const r of [coverFit({ w: 0, h: 0 }, { w: 1, h: 1 }), coverFit({ w: 1, h: 1 }, { w: 0, h: 0 })]) {
+      expect(Object.values(r).every(Number.isFinite)).toBe(true);
+    }
+  });
 });

@@ -50,6 +50,11 @@ export function coverFit(
   src: { w: number; h: number },
   dst: { w: number; h: number },
 ): { sx: number; sy: number; sw: number; sh: number } {
+  const valid = (n: number) => Number.isFinite(n) && n > 0;
+  // Nothing to crop from: an empty rect (drawImage with a zero-size source draws nothing).
+  if (!valid(src.w) || !valid(src.h)) return { sx: 0, sy: 0, sw: 0, sh: 0 };
+  // No usable destination aspect: take the whole source rather than computing NaN.
+  if (!valid(dst.w) || !valid(dst.h)) return { sx: 0, sy: 0, sw: src.w, sh: src.h };
   const scale = Math.max(dst.w / src.w, dst.h / src.h);
   const sw = Math.round(dst.w / scale);
   const sh = Math.round(dst.h / scale);
