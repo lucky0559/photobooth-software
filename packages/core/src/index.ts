@@ -5,4 +5,5 @@ export * from './layouts.ts';
 export * from './pricing.ts';
 export * from './tokens.ts';
 export * from './settings.ts';
+export * from './templates.ts';
 export * from './session-machine.ts';
