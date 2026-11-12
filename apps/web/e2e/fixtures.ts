@@ -1,4 +1,4 @@
-import { randomBytes } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { crc32, deflateSync } from 'node:zlib';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -117,6 +117,74 @@ export async function sessionCookies(who: { email: string; password: string }, b
   if (error) throw error;
   const host = new URL(baseURL).hostname;
   return [...jar].map(([name, value]) => ({ name, value, domain: host, path: '/', sameSite: 'Lax' as const }));
+}
+
+export const KIOSK_USER_ID = '00000000-0000-0000-0000-00000000c105';
+
+export type SeedSession = {
+  status: 'awaiting_payment' | 'paid' | 'free' | 'cancelled' | 'paid_after_cancel' | 'completed';
+  createdAt: Date;
+  amountCentavos?: number;
+  photo?: boolean;
+  printError?: string;
+  payment?: { amountCentavos: number; paidAt: Date };
+};
+
+/**
+ * Seeds sessions/payments/photos with the LOCAL service role and remembers everything it created,
+ * so `cleanup()` leaves the database as seeded.
+ */
+export class Seeder {
+  private db = serviceClient();
+  private sessionIds: string[] = [];
+  private objects: string[] = [];
+
+  async session(s: SeedSession, photoJpeg?: Buffer): Promise<{ id: string; token: string }> {
+    const id = randomUUID();
+    const token = randomBytes(16).toString('base64url');
+    this.sessionIds.push(id);
+    if (photoJpeg) {
+      const { error } = await this.db.storage.from('photos').upload(`${id}.jpg`, photoJpeg, { contentType: 'image/jpeg' });
+      if (error) throw error;
+      this.objects.push(`${id}.jpg`);
+    }
+    const { error } = await this.db.from('sessions').insert({
+      id,
+      kiosk_id: KIOSK_USER_ID,
+      template_id: SEED_TEMPLATE_ID,
+      download_token: token,
+      amount_centavos: s.amountCentavos ?? s.payment?.amountCentavos ?? 0,
+      status: s.status,
+      photo_path: s.photo ? `${id}.jpg` : null,
+      print_error: s.printError ?? null,
+      created_at: s.createdAt.toISOString(),
+    });
+    if (error) throw error;
+    if (s.payment) {
+      const { error: payError } = await this.db.from('payments').insert({
+        session_id: id,
+        provider_intent_id: `pi_e2e_${randomUUID()}`,
+        amount_centavos: s.payment.amountCentavos,
+        status: 'paid',
+        paid_at: s.payment.paidAt.toISOString(),
+      });
+      if (payError) throw payError;
+    }
+    return { id, token };
+  }
+
+  async cleanup(): Promise<void> {
+    const errors = [];
+    if (this.objects.length) errors.push((await this.db.storage.from('photos').remove(this.objects)).error);
+    if (this.sessionIds.length) {
+      errors.push((await this.db.from('payments').delete().in('session_id', this.sessionIds)).error);
+      errors.push((await this.db.from('sessions').delete().in('id', this.sessionIds)).error);
+    }
+    const failed = errors.find(Boolean);
+    if (failed) throw failed;
+    this.objects = [];
+    this.sessionIds = [];
+  }
 }
 
 export async function signIn(page: Page, who: { email: string; password: string }) {
