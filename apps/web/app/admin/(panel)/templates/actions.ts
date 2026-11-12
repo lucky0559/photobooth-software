@@ -6,6 +6,7 @@ import { imageSize } from 'image-size';
 import { TEMPLATE_MAX_BYTES, validateTemplateImage, type LayoutId, type Result, type Template } from '@pb/core';
 import { requireAdmin } from '@/lib/auth';
 import { hasPngSignature, pngHasTransparency } from '@/lib/png';
+import { classifyTemplateWriteError } from '@/lib/template-errors';
 
 const BUCKET = 'templates';
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -108,6 +109,8 @@ export async function setActiveTemplate(id: string): Promise<Result<true>> {
     .update({ active_template_id: id, updated_at: new Date().toISOString() })
     .eq('id', 1)
     .select('id');
+  // The template may have been archived (or removed) after the check above: the database refuses it.
+  if (error && classifyTemplateWriteError(error) === 'archivedOrMissing') return { ok: false, errors: { _: MSG.notFound } };
   if (error || !data || data.length !== 1) return { ok: false, errors: { _: MSG.saveFailed } };
 
   revalidatePath('/admin/templates');
@@ -132,6 +135,8 @@ export async function archiveTemplate(id: string): Promise<Result<true>> {
     .eq('id', id)
     .eq('archived', false)
     .select('id');
+  // It may have become active after the check above (stale tab, concurrent request): the database refuses it.
+  if (error && classifyTemplateWriteError(error) === 'archiveActive') return { ok: false, errors: { _: MSG.archiveActive } };
   if (error) return { ok: false, errors: { _: MSG.saveFailed } };
   if (!data || data.length !== 1) return { ok: false, errors: { _: MSG.notFound } };
 

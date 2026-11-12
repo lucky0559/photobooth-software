@@ -1,8 +1,10 @@
 import { test, expect, type Page } from '@playwright/test';
 import {
+  ADMIN,
   KIOSK,
   SEED_TEMPLATE_ID,
   serviceClient,
+  signedInClient,
   signIn,
   signInAsAdmin,
   writeFixtures,
@@ -61,6 +63,8 @@ test('responses carry the security headers and no x-powered-by', async ({ reques
   expect(h['x-content-type-options']).toBe('nosniff');
   expect(h['referrer-policy']).toBe('strict-origin-when-cross-origin');
   expect(h['x-frame-options']).toBe('DENY');
+  expect(h['strict-transport-security']).toBe('max-age=63072000; includeSubDomains');
+  expect(h['permissions-policy']).toBe('camera=(), microphone=(), geolocation=(), payment=()');
   expect(h['content-security-policy']).toContain("frame-ancestors 'none'");
   expect(h['content-security-policy']).toContain(`img-src 'self' data: blob: ${new URL(process.env.NEXT_PUBLIC_SUPABASE_URL ?? '').origin}`);
   expect(h['x-powered-by']).toBeUndefined();
@@ -138,6 +142,17 @@ test('templates: upload, set active, guard archive, reject bad files', async ({ 
   await staleRow.getByRole('button', { name: 'Archive' }).click();
   await expect(staleRow.getByText('Choose another active template first')).toBeVisible();
   await stale.close();
+
+  // The race the app check cannot see: the database itself refuses, even for the admin's own session
+  // going straight to PostgREST (what a request racing the settings read would hit).
+  const admin = await signedInClient(ADMIN);
+  const { data: ours, error: oursError } = await admin.from('templates').select('id').eq('name', name).single();
+  if (oursError) throw oursError;
+  const direct = await admin.from('templates').update({ archived: true }).eq('id', ours.id).select('id');
+  expect(direct.error?.code).toBe('23514');
+  expect(direct.error?.message).toBe('active template cannot be archived');
+  await page.reload();
+  await expect(row.getByText('Active', { exact: true })).toBeVisible(); // still active, not archived
 
   await upload(page, `${RUN} wide`, 'strip_2x6', files.wide);
   await expect(page.getByText(STRIP_MESSAGE)).toBeVisible();
