@@ -54,33 +54,61 @@ function templateOrNull(v: unknown): Template | null {
 /**
  * Validates an untrusted `setConfig` patch. Only `printerName`, `cameraDeviceId`, `cachedSettings` and
  * `cachedTemplate` are writable from the renderer; any other key (including `pinHash`) is ignored.
- * Throws on a non-object patch or an invalid value for a writable key.
+ * Throws on a non-object patch or an invalid printer/camera value (those come from Setup, where staff see
+ * the error). An invalid cache field (`cachedSettings`, `cachedTemplate`) is dropped with a warning and the
+ * rest of the patch still applies: the server data may not fit the kiosk's limits, which must not cost
+ * the other fields.
  */
 export function validateConfigPatch(patch: unknown): ConfigPatch {
   if (!isObject(patch)) fail('patch');
   const out: ConfigPatch = {};
   if (has(patch, 'printerName')) out.printerName = nullableString(patch.printerName, MAX_PRINTER_NAME_CHARS, 'printer');
   if (has(patch, 'cameraDeviceId')) out.cameraDeviceId = nullableString(patch.cameraDeviceId, MAX_CAMERA_ID_CHARS, 'camera');
-  if (has(patch, 'cachedSettings')) out.cachedSettings = settingsOrNull(patch.cachedSettings);
-  if (has(patch, 'cachedTemplate')) out.cachedTemplate = templateOrNull(patch.cachedTemplate);
+  for (const key of ['cachedSettings', 'cachedTemplate'] as const) {
+    if (!has(patch, key)) continue;
+    const valid = cacheField(key, patch[key]);
+    if (valid === undefined) console.warn(`setConfig: ignored an invalid ${key}`);
+    else (out as Record<string, unknown>)[key] = valid;
+  }
   return out;
 }
 
-/** Shape check for `config.json` on load (after defaults are merged in). */
-export function isLocalConfig(v: unknown): v is LocalConfig {
-  if (!isObject(v)) return false;
+/** The validated cache value, or `undefined` when invalid. */
+function cacheField(key: 'cachedSettings' | 'cachedTemplate', v: unknown): KioskSettings | Template | null | undefined {
   try {
-    nullableString(v.pinHash, 1000, 'pin');
-    validateConfigPatch({
-      printerName: v.printerName,
-      cameraDeviceId: v.cameraDeviceId,
-      cachedSettings: v.cachedSettings,
-      cachedTemplate: v.cachedTemplate,
-    });
+    return key === 'cachedSettings' ? settingsOrNull(v) : templateOrNull(v);
   } catch {
-    return false;
+    return undefined;
   }
-  return typeof v.recoveredFromCorruption === 'boolean';
+}
+
+/**
+ * Load-time check for `config.json` (after defaults are merged in). Only a non-object file or a `pinHash`
+ * that is not a string/null makes it unusable (`null`). Any other invalid field is reset to its default
+ * (caches to null) and counted as dropped, so the PIN, printer and camera survive a bad cache entry.
+ */
+export function normalizeLocalConfig(v: unknown): { value: LocalConfig; dropped: number } | null {
+  if (!isObject(v)) return null;
+  if (v.pinHash !== null && typeof v.pinHash !== 'string') return null;
+  let dropped = 0;
+  const pick = <T>(ok: boolean, value: T, fallback: T): T => {
+    if (ok) return value;
+    dropped += 1;
+    return fallback;
+  };
+  const str = (val: unknown, max: number): boolean => val === null || (typeof val === 'string' && val.length <= max);
+  const settings = cacheField('cachedSettings', v.cachedSettings) as KioskSettings | null | undefined;
+  const template = cacheField('cachedTemplate', v.cachedTemplate) as Template | null | undefined;
+  const value: LocalConfig = {
+    pinHash: v.pinHash,
+    printerName: pick(str(v.printerName, MAX_PRINTER_NAME_CHARS), v.printerName as string | null, null),
+    cameraDeviceId: pick(str(v.cameraDeviceId, MAX_CAMERA_ID_CHARS), v.cameraDeviceId as string | null, null),
+    cachedSettings: pick(settings !== undefined, settings ?? null, null),
+    cachedTemplate: pick(template !== undefined, template ?? null, null),
+    recoveredFromCorruption: pick(typeof v.recoveredFromCorruption === 'boolean', v.recoveredFromCorruption === true, false),
+    uploadsDropped: pick(typeof v.uploadsDropped === 'boolean', v.uploadsDropped === true, false),
+  };
+  return { value, dropped };
 }
 
 /** Untrusted `saveOverlay` input must be a non-empty PNG ArrayBuffer/Uint8Array of at most 10 MB. */

@@ -6,7 +6,7 @@ import { testSwitches, UNPACKAGED_ARG } from '../shared/test-switches';
 const bridge: KioskBridge = {
   getConfig: () => ipcRenderer.invoke(IPC.getConfig),
   setConfig: (patch) => ipcRenderer.invoke(IPC.setConfig, patch),
-  setPin: (pin) => ipcRenderer.invoke(IPC.setPin, pin),
+  setPin: (pin, currentPin) => ipcRenderer.invoke(IPC.setPin, pin, currentPin),
   checkPin: (pin) => ipcRenderer.invoke(IPC.checkPin, pin),
   saveOverlay: (templateId, png) => ipcRenderer.invoke(IPC.saveOverlay, templateId, png),
   readOverlay: (templateId) => ipcRenderer.invoke(IPC.readOverlay, templateId),

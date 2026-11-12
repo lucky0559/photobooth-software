@@ -21,19 +21,20 @@ async function listCameras(): Promise<MediaDeviceInfo[]> {
   return devices.filter((d) => d.kind === 'videoinput');
 }
 
-/** Shown on Setup after a damaged `config.json` was moved aside and reset. */
-export const DAMAGED_SETTINGS_NOTICE = 'Settings file was damaged and reset. Check the printer and camera.';
-
 export function Setup({
   auth,
   initialCameraId,
-  recoveredFromCorruption = false,
+  currentPin = null,
+  notices = [],
   configWarnings = [],
   onDone,
 }: {
   auth: SetupAuth | null;
   initialCameraId: string | null;
-  recoveredFromCorruption?: boolean;
+  /** The PIN staff unlocked Setup with (null on first run); main requires it to change the PIN. */
+  currentPin?: string | null;
+  /** Staff notices from load-time recovery (see setupNotices). */
+  notices?: string[];
   /** Build-time variables that are missing but do not block the app (see checkEnv). */
   configWarnings?: string[];
   onDone: () => void;
@@ -74,7 +75,9 @@ export function Setup({
     try {
       await fn();
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      // Errors thrown in main arrive wrapped as "Error invoking remote method '<channel>': Error: <message>".
+      const message = err instanceof Error ? err.message : String(err);
+      setError(message.replace(/^Error invoking remote method '[^']*': (Error: )?/, ''));
     } finally {
       setBusy(false);
     }
@@ -107,7 +110,7 @@ export function Setup({
       return;
     }
     void run(async () => {
-      await window.kiosk.setPin(pin);
+      await window.kiosk.setPin(pin, currentPin ?? undefined);
       await window.kiosk.setConfig({ cameraDeviceId: cameraId, printerName: printerName || null });
       onDone();
     });
@@ -126,7 +129,11 @@ export function Setup({
   return (
     <main className="screen setup">
       <h1>Kiosk setup</h1>
-      {recoveredFromCorruption && <p className="staff-notice">{DAMAGED_SETTINGS_NOTICE}</p>}
+      {notices.map((n) => (
+        <p key={n} className="staff-notice">
+          {n}
+        </p>
+      ))}
       {configWarnings.length > 0 && (
         <p className="staff-detail">Not set or invalid (download QR disabled): {configWarnings.join(', ')}</p>
       )}

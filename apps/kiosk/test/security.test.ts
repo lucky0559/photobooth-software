@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { isAllowedNavigation, isAllowedPermission } from '../src/main/security';
+import {
+  createNavigationGuard,
+  isAllowedNavigation,
+  isAllowedPermissionCheck,
+  isAllowedPermissionRequest,
+} from '../src/main/security';
 
 const indexFileUrl = 'file:///Applications/Kiosk.app/Contents/Resources/app/out/renderer/index.html';
 const devUrl = 'http://localhost:5173/';
@@ -43,11 +48,55 @@ describe('isAllowedNavigation', () => {
   });
 });
 
-describe('isAllowedPermission', () => {
-  it('allows only media (camera)', () => {
-    expect(isAllowedPermission('media')).toBe(true);
+describe('createNavigationGuard (every webContents, every frame)', () => {
+  const guard = createNavigationGuard(prod);
+  const event = (url?: string) => ({ url, prevented: false, preventDefault() { this.prevented = true; } });
+
+  it('blocks a disallowed URL given on the event (will-frame-navigate) or as an argument (will-navigate)', () => {
+    const a = event('https://example.com/');
+    guard(a);
+    expect(a.prevented).toBe(true);
+    const b = event();
+    guard(b, 'file:///tmp/pb-print-x.html');
+    expect(b.prevented).toBe(true);
+  });
+
+  it('lets the app page through', () => {
+    const a = event(`${indexFileUrl}#x`);
+    guard(a);
+    expect(a.prevented).toBe(false);
+    const b = event();
+    guard(b, indexFileUrl);
+    expect(b.prevented).toBe(false);
+  });
+
+  it('blocks when no URL can be determined', () => {
+    const a = event();
+    guard(a);
+    expect(a.prevented).toBe(true);
+  });
+});
+
+describe('permissions: camera only', () => {
+  it('grants a media request only for video', () => {
+    expect(isAllowedPermissionRequest('media', ['video'])).toBe(true);
+    expect(isAllowedPermissionRequest('media', ['audio'])).toBe(false);
+    expect(isAllowedPermissionRequest('media', ['video', 'audio'])).toBe(false);
+    expect(isAllowedPermissionRequest('media', [])).toBe(false);
+    expect(isAllowedPermissionRequest('media', undefined)).toBe(false);
+  });
+
+  it('passes a media check only for video', () => {
+    expect(isAllowedPermissionCheck('media', 'video')).toBe(true);
+    expect(isAllowedPermissionCheck('media', 'audio')).toBe(false);
+    expect(isAllowedPermissionCheck('media', 'unknown')).toBe(false);
+    expect(isAllowedPermissionCheck('media', undefined)).toBe(false);
+  });
+
+  it('denies every other permission', () => {
     for (const p of ['geolocation', 'notifications', 'clipboard-read', 'midi', 'openExternal', 'fullscreen', 'unknown']) {
-      expect(isAllowedPermission(p)).toBe(false);
+      expect(isAllowedPermissionRequest(p, ['video'])).toBe(false);
+      expect(isAllowedPermissionCheck(p, 'video')).toBe(false);
     }
   });
 });

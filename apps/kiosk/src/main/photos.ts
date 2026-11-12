@@ -35,6 +35,28 @@ export function resolvePhotoReadPath(photosDir: string, path: unknown): string {
 
 export const validateJpeg = validateJpegBytes;
 
+/** Names and mtimes of the files in `dir`; a file that vanishes or cannot be stat'ed is skipped, not fatal. */
+export function listPhotoFiles(
+  dir: string,
+  fs: { readdirSync(d: string): string[]; statSync(p: string): { mtimeMs: number } },
+): { name: string; mtimeMs: number }[] {
+  let names: string[];
+  try {
+    names = fs.readdirSync(dir);
+  } catch {
+    return [];
+  }
+  const out: { name: string; mtimeMs: number }[] = [];
+  for (const name of names) {
+    try {
+      out.push({ name, mtimeMs: fs.statSync(join(dir, name)).mtimeMs });
+    } catch {
+      // Deleted meanwhile (or unreadable): skip just this file.
+    }
+  }
+  return out;
+}
+
 /** A photo younger than this may still belong to a session in flight. */
 export const ORPHAN_MIN_AGE_MS = 60 * 60 * 1000;
 

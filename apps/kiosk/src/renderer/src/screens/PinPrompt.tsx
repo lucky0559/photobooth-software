@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { pinErrorMessage } from './pin-message';
 
-export function PinPrompt({ onUnlock, onCancel }: { onUnlock: () => void; onCancel: () => void }) {
+export function PinPrompt({ onUnlock, onCancel }: { onUnlock: (pin: string) => void; onCancel: () => void }) {
   const [pin, setPin] = useState('');
   const [error, setError] = useState<string | null>(null);
 
@@ -9,7 +9,7 @@ export function PinPrompt({ onUnlock, onCancel }: { onUnlock: () => void; onCanc
     e.preventDefault();
     void window.kiosk.checkPin(pin).then((result) => {
       const message = pinErrorMessage(result);
-      if (message === null) onUnlock();
+      if (message === null) onUnlock(pin);
       else {
         setPin('');
         setError(message);

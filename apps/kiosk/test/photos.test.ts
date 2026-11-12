@@ -2,6 +2,7 @@ import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   findOrphanPhotos,
+  listPhotoFiles,
   PHOTO_RETENTION_MS,
   photoPath,
   resolvePhotoReadPath,
@@ -111,5 +112,31 @@ describe('findOrphanPhotos', () => {
     expect(findOrphanPhotos([{ name: `${C}.jpg`, mtimeMs: now - HOUR }], { jobs: [], completedUploads: [] }, now)).toEqual([
       `${C}.jpg`,
     ]);
+  });
+});
+
+describe('listPhotoFiles', () => {
+  it('skips a file that vanishes between readdir and stat instead of failing the sweep', () => {
+    const fs = {
+      readdirSync: () => ['a.jpg', 'gone.jpg', 'b.jpg'],
+      statSync: (p: string) => {
+        if (p.endsWith('gone.jpg')) throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
+        return { mtimeMs: p.endsWith('a.jpg') ? 1 : 2 };
+      },
+    };
+    expect(listPhotoFiles(dir, fs)).toEqual([
+      { name: 'a.jpg', mtimeMs: 1 },
+      { name: 'b.jpg', mtimeMs: 2 },
+    ]);
+  });
+
+  it('returns nothing when the directory cannot be read', () => {
+    const fs = {
+      readdirSync: (): string[] => {
+        throw new Error('ENOENT');
+      },
+      statSync: () => ({ mtimeMs: 0 }),
+    };
+    expect(listPhotoFiles(dir, fs)).toEqual([]);
   });
 });

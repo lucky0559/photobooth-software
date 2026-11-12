@@ -41,14 +41,23 @@ function validateRow(r: unknown): SessionSync {
   return { id, downloadToken, templateId, amountCentavos, status, printError: printError === null ? null : truncatePrintError(printError), createdAt, completedAt };
 }
 
-/** Validates one job's id, kind and payload; returns it with the given retry state. */
-function validateJob(j: unknown, photosDir: string, retry: Pick<QueueJob, 'attempts' | 'nextAttemptAt' | 'lastError'>): QueueJob {
+/**
+ * Validates one job's id, kind and payload; returns it with the given retry state. The photo path is a
+ * pure function of the session id: `queueAdd` input must match it exactly, while stored jobs get it
+ * re-derived (so a userData folder that moved keeps its jobs).
+ */
+function validateJob(
+  j: unknown,
+  photosDir: string,
+  retry: Pick<QueueJob, 'attempts' | 'nextAttemptAt' | 'lastError'>,
+  path: 'match' | 'derive',
+): QueueJob {
   if (!isObject(j) || !isUuid(j.id)) fail('job');
   if (j.kind === 'upsert_session') return { id: j.id, kind: 'upsert_session', row: validateRow(j.row), ...retry };
   if (j.kind === 'upload_photo') {
     if (!isUuid(j.sessionId)) fail('session id');
     const filePath = photoPath(photosDir, j.sessionId);
-    if (j.filePath !== filePath) fail('photo path');
+    if (path === 'match' && j.filePath !== filePath) fail('photo path');
     return { id: j.id, kind: 'upload_photo', sessionId: j.sessionId, filePath, ...retry };
   }
   return fail('job kind');
@@ -57,35 +66,42 @@ function validateJob(j: unknown, photosDir: string, retry: Pick<QueueJob, 'attem
 /** Validates untrusted `queueAdd` input. Returned jobs are due now with no attempts. */
 export function validateQueueJobs(input: unknown, photosDir: string): QueueJob[] {
   if (!Array.isArray(input) || input.length === 0 || input.length > MAX_JOBS_PER_ADD) fail('job list');
-  return input.map((j: unknown) => validateJob(j, photosDir, { attempts: 0, nextAttemptAt: 0, lastError: null }));
+  return input.map((j: unknown) => validateJob(j, photosDir, { attempts: 0, nextAttemptAt: 0, lastError: null }, 'match'));
 }
 
-function isStoredJob(j: unknown, photosDir: string): boolean {
-  if (!isObject(j)) return false;
+function storedJob(j: unknown, photosDir: string): QueueJob | null {
+  if (!isObject(j)) return null;
   const { attempts, nextAttemptAt, lastError } = j;
-  if (typeof attempts !== 'number' || !Number.isInteger(attempts) || attempts < 0) return false;
-  if (typeof nextAttemptAt !== 'number' || !Number.isFinite(nextAttemptAt)) return false;
-  if (lastError !== null && typeof lastError !== 'string') return false;
+  if (typeof attempts !== 'number' || !Number.isInteger(attempts) || attempts < 0) return null;
+  if (typeof nextAttemptAt !== 'number' || !Number.isFinite(nextAttemptAt)) return null;
+  if (lastError !== null && typeof lastError !== 'string') return null;
   try {
-    validateJob(j, photosDir, { attempts, nextAttemptAt, lastError });
-    return true;
+    return validateJob(j, photosDir, { attempts, nextAttemptAt, lastError }, 'derive');
   } catch {
-    return false;
+    return null;
   }
 }
 
-function isCompletedUpload(u: unknown): boolean {
-  return isObject(u) && isUuid(u.sessionId) && typeof u.filePath === 'string' && typeof u.completedAt === 'number' && Number.isFinite(u.completedAt);
+function storedCompletedUpload(u: unknown, photosDir: string): CompletedUpload | null {
+  if (!isObject(u) || !isUuid(u.sessionId) || typeof u.completedAt !== 'number' || !Number.isFinite(u.completedAt)) return null;
+  return { sessionId: u.sessionId, filePath: photoPath(photosDir, u.sessionId), completedAt: u.completedAt };
 }
 
-/** Shape check for `queue.json` on load: every job and completed upload must be valid. */
-export function queueFileValidator(photosDir: string): (v: unknown) => v is QueueFile {
-  return (v: unknown): v is QueueFile =>
-    isObject(v) &&
-    Array.isArray(v.jobs) &&
-    v.jobs.every((j) => isStoredJob(j, photosDir)) &&
-    Array.isArray(v.completedUploads) &&
-    v.completedUploads.every(isCompletedUpload);
+/**
+ * Load-time check for `queue.json`. Only a non-object or missing `jobs`/`completedUploads` arrays make the
+ * whole file unusable (`null`). Otherwise every valid entry is kept (photo paths re-derived from the
+ * session id) and only invalid entries are dropped and counted.
+ */
+export function normalizeQueueFile(photosDir: string): (v: unknown) => { value: QueueFile; dropped: number } | null {
+  return (v) => {
+    if (!isObject(v) || !Array.isArray(v.jobs) || !Array.isArray(v.completedUploads)) return null;
+    const jobs = v.jobs.map((j) => storedJob(j, photosDir)).filter((j): j is QueueJob => j !== null);
+    const completedUploads = v.completedUploads
+      .map((u) => storedCompletedUpload(u, photosDir))
+      .filter((u): u is CompletedUpload => u !== null);
+    const dropped = v.jobs.length - jobs.length + (v.completedUploads.length - completedUploads.length);
+    return { value: { jobs, completedUploads }, dropped };
+  };
 }
 
 /** Validates untrusted `queueApply` input; long error messages are truncated. */

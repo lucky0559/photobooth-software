@@ -1,15 +1,14 @@
 import { ipcMain } from 'electron';
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { IPC, PIN_PATTERN, TEMPLATE_ID_PATTERN, toConfigView, type LocalConfig, type PinCheckResult } from '../shared/bridge';
+import { IPC, TEMPLATE_ID_PATTERN, toConfigView, type LocalConfig } from '../shared/bridge';
 import type { TestSwitches } from '../shared/test-switches';
 import { validateConfigPatch, validateOverlayPng } from './config-validation';
 import type { JsonStore } from './json-store';
 import { photoPath, resolvePhotoReadPath, validateJpeg } from './photos';
-import { createPinThrottle } from './pin-throttle';
+import { createPinService } from './pin-service';
 import { addJobs, applyResult, validateQueueJobs, validateQueueResult, type QueueFile } from './queue-store';
 import { listPrinters, printSheet, validatePrintRequest } from './print';
-import { hashPin, verifyPin } from './pin';
 
 function overlayFile(overlayDir: string, templateId: unknown): string {
   if (typeof templateId !== 'string' || !TEMPLATE_ID_PATTERN.test(templateId)) {
@@ -34,31 +33,17 @@ export function registerIpc(
   mkdirSync(photosDir, { recursive: true });
 
   // The renderer never receives the PIN hash; it only learns whether a PIN is set.
-  ipcMain.handle(IPC.getConfig, () => toConfigView(store.get()));
+  const view = (c: LocalConfig) => toConfigView(c, store.writeBlocked);
+  ipcMain.handle(IPC.getConfig, () => view(store.get()));
 
   ipcMain.handle(IPC.setConfig, (_e, patch: unknown) => {
     const valid = validateConfigPatch(patch);
-    return toConfigView(store.update((c) => ({ ...c, ...valid })));
+    return view(store.update((c) => ({ ...c, ...valid })));
   });
 
-  ipcMain.handle(IPC.setPin, (_e, pin: unknown) => {
-    if (typeof pin !== 'string' || !PIN_PATTERN.test(pin)) throw new Error('PIN must be 4 to 8 digits');
-    // Finishing Setup (which always sets the PIN) clears the damaged-settings notice.
-    store.update((c) => ({ ...c, pinHash: hashPin(pin), recoveredFromCorruption: false }));
-  });
-
-  const pinThrottle = createPinThrottle();
-  ipcMain.handle(IPC.checkPin, (_e, pin: unknown): PinCheckResult => {
-    const locked = pinThrottle.retryAfterMs();
-    if (locked > 0) return { ok: false, retryAfterMs: locked };
-    const stored = store.get().pinHash;
-    if (typeof pin === 'string' && stored !== null && verifyPin(pin, stored)) {
-      pinThrottle.recordSuccess();
-      return { ok: true };
-    }
-    const lock = pinThrottle.recordFailure();
-    return { ok: false, retryAfterMs: lock > 0 ? lock : null };
-  });
+  const pins = createPinService(store);
+  ipcMain.handle(IPC.setPin, (_e, pin: unknown, currentPin: unknown) => pins.set(pin, currentPin));
+  ipcMain.handle(IPC.checkPin, (_e, pin: unknown) => pins.check(pin));
 
   ipcMain.handle(IPC.saveOverlay, (_e, templateId: unknown, png: unknown) => {
     const file = overlayFile(overlayDir, templateId);

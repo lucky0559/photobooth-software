@@ -1,6 +1,6 @@
 import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { addJobs, applyResult, EMPTY_QUEUE, queueFileValidator, validateQueueJobs, validateQueueResult } from '../src/main/queue-store';
+import { addJobs, applyResult, EMPTY_QUEUE, normalizeQueueFile, validateQueueJobs, validateQueueResult } from '../src/main/queue-store';
 import type { QueueJob } from '../src/shared/queue';
 
 const dir = resolve('/data/photos');
@@ -117,25 +117,67 @@ describe('addJobs / applyResult', () => {
   });
 });
 
-describe('queueFileValidator', () => {
-  const isQueueFile = queueFileValidator(dir);
+describe('normalizeQueueFile', () => {
+  const normalize = normalizeQueueFile(dir);
   const done = { sessionId: SID, filePath: join(dir, `${SID}.jpg`), completedAt: 5 };
+  const uuid = (n: number): string => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 
-  it('accepts an empty queue and stored jobs with retry state', () => {
-    expect(isQueueFile(EMPTY_QUEUE)).toBe(true);
-    expect(isQueueFile({ jobs: [upsertJob, uploadJob], completedUploads: [done] })).toBe(true);
+  it('keeps an empty queue and stored jobs with their retry state', () => {
+    expect(normalize(EMPTY_QUEUE)).toEqual({ value: EMPTY_QUEUE, dropped: 0 });
+    expect(normalize({ jobs: [upsertJob, uploadJob], completedUploads: [done] })).toEqual({
+      value: { jobs: [upsertJob, uploadJob], completedUploads: [done] },
+      dropped: 0,
+    });
   });
 
-  it('rejects wrong shapes', () => {
-    expect(isQueueFile(null)).toBe(false);
-    expect(isQueueFile({ jobs: {}, completedUploads: [] })).toBe(false);
-    expect(isQueueFile({ jobs: [], completedUploads: 'x' })).toBe(false);
-    expect(isQueueFile({ jobs: [{ ...upsertJob, attempts: -1 }], completedUploads: [] })).toBe(false);
-    expect(isQueueFile({ jobs: [{ ...upsertJob, nextAttemptAt: 'soon' }], completedUploads: [] })).toBe(false);
-    expect(isQueueFile({ jobs: [{ ...upsertJob, lastError: 5 }], completedUploads: [] })).toBe(false);
-    expect(isQueueFile({ jobs: [{ ...upsertJob, row: { ...row, id: 'x' } }], completedUploads: [] })).toBe(false);
-    expect(isQueueFile({ jobs: [{ ...uploadJob, filePath: '/etc/passwd' }], completedUploads: [] })).toBe(false);
-    expect(isQueueFile({ jobs: [{ ...uploadJob, kind: 'other' }], completedUploads: [] })).toBe(false);
-    expect(isQueueFile({ jobs: [], completedUploads: [{ ...done, completedAt: null }] })).toBe(false);
+  it('keeps all 40 jobs from a userData folder that moved, re-deriving their photo paths', () => {
+    const oldDir = resolve('/Users/booth/AppData/photos');
+    const jobs = Array.from({ length: 40 }, (_, i) => ({
+      id: uuid(1000 + i),
+      kind: 'upload_photo',
+      sessionId: uuid(i),
+      filePath: join(oldDir, `${uuid(i)}.jpg`),
+      attempts: 2,
+      nextAttemptAt: 99,
+      lastError: 'offline',
+    }));
+    const r = normalize({ jobs, completedUploads: [{ ...done, filePath: join(oldDir, `${SID}.jpg`) }] });
+    expect(r?.dropped).toBe(0);
+    expect(r?.value.jobs).toHaveLength(40);
+    expect(r?.value.jobs).toEqual(jobs.map((j) => ({ ...j, filePath: join(dir, `${j.sessionId}.jpg`) })));
+    expect(r?.value.completedUploads).toEqual([done]);
+  });
+
+  it('drops only the malformed job among valid ones', () => {
+    const r = normalize({ jobs: [upsertJob, { ...upsertJob, id: 'not-a-uuid' }, uploadJob], completedUploads: [] });
+    expect(r).toEqual({ value: { jobs: [upsertJob, uploadJob], completedUploads: [] }, dropped: 1 });
+  });
+
+  it('drops jobs with bad retry state or rows, and unknown kinds', () => {
+    const bad = [
+      { ...upsertJob, attempts: -1 },
+      { ...upsertJob, nextAttemptAt: 'soon' },
+      { ...upsertJob, lastError: 5 },
+      { ...upsertJob, row: { ...row, id: 'x' } },
+      { ...uploadJob, sessionId: '../../etc' },
+      { ...uploadJob, kind: 'other' },
+      null,
+    ];
+    expect(normalize({ jobs: [...bad, upsertJob], completedUploads: [] })).toEqual({
+      value: { jobs: [upsertJob], completedUploads: [] },
+      dropped: bad.length,
+    });
+  });
+
+  it('drops only the bad completedUploads entry', () => {
+    const r = normalize({ jobs: [], completedUploads: [done, { ...done, completedAt: null }, { sessionId: 'x', completedAt: 1 }] });
+    expect(r).toEqual({ value: { jobs: [], completedUploads: [done] }, dropped: 2 });
+  });
+
+  it('rejects the whole file only when it is not an object or the arrays are missing', () => {
+    expect(normalize(null)).toBeNull();
+    expect(normalize({ jobs: {}, completedUploads: [] })).toBeNull();
+    expect(normalize({ jobs: [], completedUploads: 'x' })).toBeNull();
+    expect(normalize({ completedUploads: [] })).toBeNull();
   });
 });

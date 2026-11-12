@@ -8,6 +8,7 @@ import { Payment } from './screens/Payment';
 import { PinPrompt } from './screens/PinPrompt';
 import { Review } from './screens/Review';
 import { Setup, type SetupAuth } from './screens/Setup';
+import { setupNotices } from './screens/setup-notices';
 import { registerTap } from './setup/secret-tap';
 import { attractStatus } from './state/settings-sync';
 import { useKiosk } from './state/useKiosk';
@@ -20,7 +21,9 @@ type Screen = 'loading' | 'setup' | 'pin' | 'kiosk';
 export function App({ api, auth, configWarnings = [] }: { api: KioskApi; auth: SetupAuth | null; configWarnings?: string[] }) {
   const [screen, setScreen] = useState<Screen>('loading');
   const [cameraId, setCameraId] = useState<string | null>(null);
-  const [recovered, setRecovered] = useState(false);
+  const [notices, setNotices] = useState<string[]>([]);
+  // The PIN that unlocked Setup through the secret corner; main needs it to change the PIN. Dropped on exit.
+  const [unlockPin, setUnlockPin] = useState<string | null>(null);
   const taps = useRef<number[]>([]);
   const queue = useRef<QueueRunner | null>(null);
 
@@ -40,7 +43,8 @@ export function App({ api, auth, configWarnings = [] }: { api: KioskApi; auth: S
   const reload = (): void => {
     void window.kiosk.getConfig().then((cfg) => {
       setCameraId(cfg.cameraDeviceId);
-      setRecovered(cfg.recoveredFromCorruption);
+      setNotices(setupNotices(cfg));
+      setUnlockPin(null);
       setScreen(cfg.pinSet ? 'kiosk' : 'setup');
     });
   };
@@ -58,12 +62,21 @@ export function App({ api, auth, configWarnings = [] }: { api: KioskApi; auth: S
         <Setup
           auth={auth}
           initialCameraId={cameraId}
-          recoveredFromCorruption={recovered}
+          currentPin={unlockPin}
+          notices={notices}
           configWarnings={configWarnings}
           onDone={reload}
         />
       )}
-      {screen === 'pin' && <PinPrompt onUnlock={() => setScreen('setup')} onCancel={() => setScreen('kiosk')} />}
+      {screen === 'pin' && (
+        <PinPrompt
+          onUnlock={(pin) => {
+            setUnlockPin(pin);
+            setScreen('setup');
+          }}
+          onCancel={() => setScreen('kiosk')}
+        />
+      )}
       {screen === 'kiosk' && (
         <KioskFlow api={api} cameraId={cameraId} onSecretTap={onSecretTap} onEnqueued={kickQueue} />
       )}

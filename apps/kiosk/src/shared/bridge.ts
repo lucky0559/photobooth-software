@@ -15,6 +15,8 @@ export interface LocalConfig {
   cachedTemplate: Template | null;
   /** A damaged `config.json` was moved aside and reset; cleared when Setup sets the PIN again. */
   recoveredFromCorruption: boolean;
+  /** Invalid entries were dropped from `queue.json` on load; cleared when Setup sets the PIN again. */
+  uploadsDropped: boolean;
 }
 
 export const DEFAULT_LOCAL_CONFIG: LocalConfig = {
@@ -24,17 +26,21 @@ export const DEFAULT_LOCAL_CONFIG: LocalConfig = {
   cachedSettings: null,
   cachedTemplate: null,
   recoveredFromCorruption: false,
+  uploadsDropped: false,
 };
 
-/** What the renderer sees of LocalConfig: never the PIN hash, only whether a PIN is set. */
-export type ConfigView = Omit<LocalConfig, 'pinHash'> & { pinSet: boolean };
+/**
+ * What the renderer sees of LocalConfig: never the PIN hash, only whether a PIN is set.
+ * `settingsUnreadable`: `config.json` could not be read this run; nothing is saved until a restart.
+ */
+export type ConfigView = Omit<LocalConfig, 'pinHash'> & { pinSet: boolean; settingsUnreadable: boolean };
 
 /** The LocalConfig keys the renderer may write through `setConfig`. */
 export type ConfigPatch = Partial<Pick<LocalConfig, 'printerName' | 'cameraDeviceId' | 'cachedSettings' | 'cachedTemplate'>>;
 
-export function toConfigView(config: LocalConfig): ConfigView {
+export function toConfigView(config: LocalConfig, settingsUnreadable = false): ConfigView {
   const { pinHash, ...rest } = config;
-  return { ...rest, pinSet: pinHash !== null };
+  return { ...rest, pinSet: pinHash !== null, settingsUnreadable };
 }
 
 /** The only API the renderer can reach in the main process. Exposed as `window.kiosk`. */
@@ -42,7 +48,11 @@ export interface KioskBridge {
   getConfig(): Promise<ConfigView>;
   /** Only the `ConfigPatch` keys are writable (others are ignored); use `setPin` for the PIN. */
   setConfig(patch: ConfigPatch): Promise<ConfigView>;
-  setPin(pin: string): Promise<void>;
+  /**
+   * Sets the admin PIN. On first run (no PIN yet) `currentPin` is not needed; once a PIN is set it must be
+   * the current PIN (checked against the same wrong-PIN throttle as `checkPin`), otherwise this rejects.
+   */
+  setPin(pin: string, currentPin?: string): Promise<void>;
   checkPin(pin: string): Promise<PinCheckResult>;
   saveOverlay(templateId: string, png: ArrayBuffer): Promise<void>;
   readOverlay(templateId: string): Promise<ArrayBuffer | null>;
