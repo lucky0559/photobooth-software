@@ -68,8 +68,8 @@ schema_paths = []
 [db.seed]
 # If enabled, seeds the database after migrations during a db reset.
 # seed.sql is LOCAL ONLY (published test passwords). Local `supabase db reset` needs this on;
-# never run `supabase db reset --linked` or `supabase db push --include-seed` against a hosted
-# project (see docs/ENVIRONMENTS.md).
+# never run `supabase db reset --remote` or `supabase db push --remote --include-seed` against a
+# hosted project. Hosted schema: `supabase db push --remote` only (see docs/ENVIRONMENTS.md, docs/DEPLOY.md).
 enabled = true
 # Specifies an ordered list of seed files to load during db reset.
 # Supports glob patterns relative to supabase directory: "./seeds/*.sql"

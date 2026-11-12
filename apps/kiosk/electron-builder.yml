@@ -28,7 +28,9 @@ win:
       arch:
         - x64
   # No code signing configured: Windows SmartScreen warns on first install (docs/DEPLOY.md).
-  # Keep signAndEditExecutable on: it writes the exe icon and version metadata (needs Windows, or wine elsewhere).
+  # Keep signAndEditExecutable on: it writes the exe icon and version metadata. The real installer is built,
+  # installed and tested on the Windows PC; a macOS cross-build (electron-builder 26.18) also wrote the correct
+  # name/version without wine, but is not a substitute for that. No icon configured yet (Electron's default).
 nsis:
   oneClick: false
   perMachine: true

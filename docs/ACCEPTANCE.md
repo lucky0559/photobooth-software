@@ -174,9 +174,12 @@ Evidence: photo of the Setup camera list.
 **12. PIN lockout after 5 wrong PINs.**
 Do: tap the top-left corner 5 times within 3 s on the start screen, enter a wrong PIN 5 times, then try the correct
 PIN at once; wait, try again.
-Expected: the 5th wrong PIN shows `Too many attempts. Try again in 30 s.`; the correct PIN is refused until the wait
-ends, then works. A further wrong PIN after a lockout locks again for longer (60 s, 120 s, … up to 5 min). Restarting
-the app resets the counter (expected, documented).
+Expected (`apps/kiosk/src/main/pin-throttle.ts`): wrong PINs 1–4 show `Wrong PIN`; the 5th shows
+`Too many attempts. Try again in 30 s.`. During a lockout every attempt, including the correct PIN, is refused with
+the remaining seconds (`Too many attempts. Try again in N s.`) and does not count as a new failure. After the wait the
+correct PIN works and resets everything. Each further wrong PIN after a lockout ends (without a correct one in
+between) locks again at once, doubling: 60 s, 120 s, 240 s, then 300 s (5 min cap) for every later one. Restarting the
+app resets the counter (in-memory, documented).
 Evidence: photo of the lockout message.
 
 **13. Copy the kiosk data to another Windows user; queued uploads are restored.**
@@ -188,18 +191,21 @@ Evidence: Setup screenshot, both download pages.
 
 **14. Kill the app mid-session; no data loss.**
 Do: in Task Manager, End task on Photobooth Kiosk (a) on the Delivery screen after printing, and (b) during Capture of
-a paid session; restart it each time.
-Expected: (a) the session and its photo still reach `/admin` and the download link works after restart; (b) the paid
-session shows in Needs attention as "Paid but not completed" after 10 minutes. No `.corrupt-` file appears in the data
-folder.
+a paid session (payment comes before capture, so the session is already paid); restart it each time.
+Expected: (a) the session and its photo still reach `/admin` and the download link works after restart; (b) the
+session stays `paid` and shows in Needs attention as "Paid but not completed — consider a refund" once it is more than
+10 minutes old, counted from the session's creation (`ATTENTION_AFTER_MS` in `packages/core/src/reports.ts`), not
+from the kill; its photos are lost, so refund it. No `.corrupt-` file appears in the data folder.
 Evidence: `/admin` rows, a directory listing of the data folder.
 
 **15. Unreadable `queue.json` → "Out of service", then clears.**
-Do: with the kiosk running on the start screen, in `%APPDATA%\Photobooth Kiosk\queue.json` → Properties → Security →
-Edit, add **Deny Read** for the kiosk Windows user; wait 20 s. Then remove the Deny entry; wait 20 s.
-Expected: the start screen shows `Out of service. Please call staff.` with start disabled (Setup shows "Saved sessions
-file could not be read…"); after removing the Deny it clears by itself within about 10 s and sessions work; the file's
-content is unchanged. Also note, for the record, what a plain Read-only attribute (Properties → Read-only) does during
+Do: **close the kiosk** (the file is read when the app starts; a lock added while it runs is not noticed until a
+write fails). In `%APPDATA%\Photobooth Kiosk\queue.json` → Properties → Security → Edit, add **Deny Read** for the
+kiosk Windows user. Start the kiosk. Then, with it still running, remove the Deny entry; wait 20 s.
+Expected (the `queueUnavailable` flow, as in the e2e `hardening.spec.ts`): after start-up the start screen shows
+`Out of service. Please call staff.` with Tap to start disabled (Setup shows "Saved sessions file could not be
+read…"); the file is never overwritten. After removing the Deny, the next queue check (every 10 s) re-reads the file
+and the banner clears by itself, start is enabled and sessions work; the file's content is unchanged. Also note, for the record, what a plain Read-only attribute (Properties → Read-only) does during
 a session (it blocks writes, not reads, so a different error such as `We couldn't save your photo. Please call staff.`
 is possible).
 Evidence: photos of both screens, notes on the Read-only variant.

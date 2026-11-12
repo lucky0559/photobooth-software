@@ -104,6 +104,10 @@ Three functions: `create-payment` and `cancel-payment` (called by the kiosk with
 
    `paymongo-webhook` must accept calls without a Supabase JWT (PayMongo has none); its own signature check is the
    protection. `supabase/config.toml` also sets `verify_jwt = false` for it, the flag makes it explicit.
+
+   ⚠️ Unverified (not yet deployed against a hosted project): by default the CLI bundles functions locally with
+   Docker. On a machine without Docker running, add `--use-api` (bundles server-side) to both commands, e.g.
+   `supabase functions deploy paymongo-webhook --no-verify-jwt --use-api`.
 4. **Caveat: the deploy bundle has not been verified.** The CLI has no dry-run bundle, and no hosted project existed
    while this was built, so only `supabase functions serve` (local) has been exercised. After the first deploy, open
    Dashboard → Edge Functions → each function → Logs, and run the Task 5 section of [ACCEPTANCE.md](ACCEPTANCE.md). A
@@ -178,11 +182,27 @@ Function URLs: `https://<project-ref>.supabase.co/functions/v1/<name>`.
 
 ## E. Kiosk PC (Windows 10/11 x64)
 
-Build the installer **on the Windows PC** (or another Windows machine): the build bakes the environment below into the
-app, and only a Windows build is tested for icon/version resources and signing tools.
+Build the installer **on the Windows PC** (or another Windows machine) for the real run: the build bakes the
+environment below into the app, and the installer is meant to be built, installed and tested there. A cross-build on
+macOS has produced a Windows exe with the correct name and version metadata, but it is not a substitute for building
+and installing on Windows.
 
-1. Install Node 22 LTS and Git for Windows. In a new terminal: `corepack enable`.
-2. Get the code and install:
+No app icon is configured yet: the installer and the exe use Electron's default icon (later: add
+`apps/kiosk/build/icon.ico` and `win.icon` in `electron-builder.yml`).
+
+1. Install Node 22 LTS and Git for Windows.
+2. **Pre-flight: pnpm 9.** In a new terminal:
+
+   ```powershell
+   corepack enable
+   corepack prepare pnpm@9.15.0 --activate
+   pnpm -v
+   ```
+
+   `pnpm -v` must print `9.x` (the repo pins `pnpm@9.15.0`). pnpm 9 runs dependency install scripts, including
+   Electron's binary download. If you are on pnpm 10+ anyway (it blocks install scripts by default), run
+   `pnpm approve-builds` after the install and approve `electron`.
+3. Get the code and install:
 
    ```powershell
    git clone <repo-url> photobooth-software
@@ -190,11 +210,22 @@ app, and only a Windows build is tested for icon/version resources and signing t
    pnpm install --frozen-lockfile
    ```
 
-   pnpm 9 runs dependency install scripts, including Electron's binary download. If you use pnpm 10+ (which blocks
-   them by default), run `pnpm approve-builds` and approve `electron`, or the dev/e2e runs fail with "Electron failed
-   to install correctly"; the fix is `node install.js` inside `apps\kiosk\node_modules\electron`. Packaging itself
-   downloads its own Electron copy, so the installer build does not depend on that script.
-3. Create `apps\kiosk\.env` (copy `apps\kiosk\.env.example`; it is gitignored):
+   Check that Electron's binary was downloaded:
+
+   ```powershell
+   dir apps\kiosk\node_modules\electron\dist\electron.exe
+   ```
+
+   If it is missing (dev/e2e runs would fail with "Electron failed to install correctly"), run the skipped script:
+
+   ```powershell
+   cd apps\kiosk\node_modules\electron
+   node install.js
+   cd ..\..\..\..
+   ```
+
+   Packaging itself downloads its own Electron copy, so the installer build does not depend on that script.
+4. Create `apps\kiosk\.env` (copy `apps\kiosk\.env.example`; it is gitignored):
 
    ```ini
    VITE_SUPABASE_URL=https://<project-ref>.supabase.co
@@ -206,7 +237,7 @@ app, and only a Windows build is tested for icon/version resources and signing t
    `VITE_WEB_BASE_URL` is the deployed web app (section D) without a trailing path; the download QR points at
    `<VITE_WEB_BASE_URL>/d/<token>`. Never put the service-role key here: everything in this file is readable inside the
    installed app.
-4. Build the installer:
+5. Build the installer:
 
    ```powershell
    pnpm --filter kiosk build:win
@@ -216,14 +247,14 @@ app, and only a Windows build is tested for icon/version resources and signing t
    with `apps/kiosk/electron-builder.yml`. A `beforePack` check also refuses a missing or test build in `out/`.
    Output: `apps\kiosk\dist\Photobooth-Kiosk-Setup-0.1.0.exe` (about 120 MB). `pnpm --filter kiosk package` builds
    only the unpacked folder (`dist\win-unpacked` on Windows) for a quick look.
-5. Install: run the `.exe` as an administrator. It installs for all users (default
+6. Install: run the `.exe` as an administrator. It installs for all users (default
    `C:\Program Files\Photobooth Kiosk`) and lets you change the folder.
    - **SmartScreen:** the installer is not code-signed, so Windows shows "Windows protected your PC". Click "More
      info" → "Run anyway". Some antivirus tools may also quarantine it; allow it. The production fix is an OV/EV
      code-signing certificate (ENVIRONMENTS.md); signing is not configured yet.
    - There is no auto-update. To update, build a new installer with a higher `version` in `apps/kiosk/package.json`
      and run it over the old install; the data folder (G.5) is kept.
-6. First run (signed in to Windows as the account that will run the kiosk; the data folder is per Windows user):
+7. First run (signed in to Windows as the account that will run the kiosk; the data folder is per Windows user):
    - The app opens full screen in kiosk mode on **Kiosk setup**. Set the **Admin PIN** (4–8 digits; staff need it to
      reopen Setup later).
    - Sign in with the **kiosk** account from A.5 (not the admin account).
@@ -232,9 +263,9 @@ app, and only a Windows build is tested for icon/version resources and signing t
    - The start screen shows the price (or "Free today!") from the admin settings. Price and template changes reach
      the kiosk within about 1 minute while it is on the start screen.
    - Reopen Setup later: on the start screen tap the top-left corner 5 times within 3 seconds, then enter the PIN.
-   - "This kiosk is not configured. Please call staff." on launch means step 3's `.env` was missing or invalid when
+   - "This kiosk is not configured. Please call staff." on launch means step 4's `.env` was missing or invalid when
      the installer was built: fix it and rebuild.
-7. Windows auto-start: press `Win+R`, type `shell:startup`, Enter, and copy the "Photobooth Kiosk" desktop shortcut
+8. Windows auto-start: press `Win+R`, type `shell:startup`, Enter, and copy the "Photobooth Kiosk" desktop shortcut
    into that folder (this is the Startup folder of the signed-in Windows user, which is what the kiosk needs). With
    the single-instance lock, a second launch only brings the running kiosk to the front.
 
@@ -243,7 +274,7 @@ app, and only a Windows build is tested for icon/version resources and signing t
 None of this is done by the app; set it up once on the kiosk PC and re-run the ACCEPTANCE.md rows afterwards.
 
 - [ ] A dedicated local Windows account for the kiosk (standard user, not an administrator), signed in automatically
-      at boot, with the Startup-folder shortcut from E.7.
+      at boot, with the Startup-folder shortcut from E.8.
 - [ ] Power: Settings → System → Power: screen off **Never**, sleep **Never**. Disable hibernate / Fast Startup if the
       PC does not come back cleanly from power cuts. Set "Restore on AC power loss" in the BIOS if offered.
 - [ ] Screen saver: None. Lock screen on resume: off for the kiosk account.
@@ -259,7 +290,7 @@ None of this is done by the app; set it up once on the kiosk PC and re-run the A
 - [ ] Network: Ethernet preferred; the kiosk keeps working offline in free mode and queues uploads, but paid sessions
       need the internet.
 - [ ] Optional, not tested with this app: Windows Assigned Access ("Set up a kiosk") for a single-app kiosk account.
-      It changes how the app starts and what it may access; if you use it, redo E.6 under that account and re-run the
+      It changes how the app starts and what it may access; if you use it, redo E.7 under that account and re-run the
       whole ACCEPTANCE.md checklist.
 - [ ] Physical: keyboard and mouse put away (Alt+F4 closes the app, the keyboard can reach Windows), PC in a locked
       enclosure.
@@ -268,7 +299,7 @@ None of this is done by the app; set it up once on the kiosk PC and re-run the A
 
 ### G.1 Daily start-up
 
-1. Turn on the PC; the kiosk starts on its own (E.7). Wait for the start screen with the price.
+1. Turn on the PC; the kiosk starts on its own (E.8). Wait for the start screen with the price.
 2. Check the camera preview and that the printer has paper and ink/ribbon.
 3. If anything looks wrong, open Setup (corner taps + PIN), check Camera/Printer, print a test page.
 4. In `/admin` (phone or laptop), check today's dashboard and the **Needs attention** list (G.3).
@@ -282,7 +313,7 @@ None of this is done by the app; set it up once on the kiosk PC and re-run the A
 | `Payments are unavailable right now. Please call staff.` | Payment | The kiosk could not create the PayMongo QR (no internet, PayMongo error, or wrong Edge Function secrets). | Check the internet. If online, check Supabase → Edge Functions → `create-payment` logs. Switch the admin to free mode if you must keep the booth running. |
 | `We couldn't save your photo. Please call staff.` | After Review | The photo could not be composed or saved/queued on the PC (disk full, data folder unwritable). The guest has paid. | Tap Try again. If it fails again, note the time, refund the guest if they paid (G.3), restart the kiosk and check free disk space. |
 | `Printing failed. Please call staff — your photo is still available through the QR code.` | Delivery | The printer reported an error (paper, ribbon, offline, wrong printer). The photo is saved and uploads as usual. | Fix the printer. There is no reprint in the lean MVP: the guest uses the QR download; print the downloaded file manually if you want to give them a copy. |
-| `This kiosk is not configured. Please call staff.` | Instead of the app, at launch | The installer was built without valid `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` / `VITE_WEB_BASE_URL`. | Rebuild the installer with a correct `apps\kiosk\.env` (E.3) and reinstall. |
+| `This kiosk is not configured. Please call staff.` | Instead of the app, at launch | The installer was built without valid `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` / `VITE_WEB_BASE_URL`. | Rebuild the installer with a correct `apps\kiosk\.env` (E.4) and reinstall. |
 
 Other start-screen banners: "Setup needed: no active template" (activate a template in `/admin`), "Offline — payments
 unavailable" (paid mode with no internet; free mode keeps working offline).
