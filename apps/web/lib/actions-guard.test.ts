@@ -22,6 +22,7 @@ vi.mock('@/lib/supabase/server', () => ({
 
 const { saveSettings } = await import('../app/admin/(panel)/settings/actions');
 const { uploadTemplate, setActiveTemplate, archiveTemplate } = await import('../app/admin/(panel)/templates/actions');
+const { markRefunded, undoRefund } = await import('../app/admin/(panel)/refund-actions');
 
 function spyFormData(): FormData {
   const fd = new FormData();
@@ -49,6 +50,8 @@ describe('admin server actions check the admin role first', () => {
     ['uploadTemplate', () => uploadTemplate(spyFormData())],
     ['setActiveTemplate', () => setActiveTemplate(ID)],
     ['archiveTemplate', () => archiveTemplate(ID)],
+    ['markRefunded', () => markRefunded(ID)],
+    ['undoRefund', () => undoRefund(ID)],
   ])('%s stops at requireAdmin for a non-admin', async (_name, run) => {
     await expect(run()).rejects.toThrow('NEXT_REDIRECT');
     expect(calls.order).toEqual(['requireAdmin']);

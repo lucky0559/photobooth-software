@@ -1,4 +1,4 @@
-import { ATTENTION_AFTER_MS, formatPeso } from '@pb/core';
+import { ATTENTION_AFTER_MS, formatPeso, needsAttention } from '@pb/core';
 
 /**
  * Rows of a capped query (PostgREST max_rows is 1000) can only be summed when the exact count shows nothing was
@@ -72,4 +72,101 @@ export function sessionAmountLabel(s: { status: string; amount_centavos: number 
   if (payment?.status === 'paid') return formatPeso(payment.amount_centavos);
   if (!payment && (s.status === 'free' || (s.status === 'completed' && s.amount_centavos === 0))) return 'Free';
   return '—';
+}
+
+// ---------------------------------------------------------------------------
+// Needs attention / refunds (R20): one row per flagged PAYMENT the operator may have to refund
+// ---------------------------------------------------------------------------
+
+/** Newest flagged payments shown; the overflow note says when there are more. */
+export const ATTENTION_LIMIT = 100;
+/** Newest refunded payments listed under "Refunded" (with Undo). */
+export const REFUNDED_LIMIT = 20;
+
+/**
+ * Sessions query columns for Needs attention: `payments!inner` so filters on the payment (not refunded) also filter
+ * the sessions and their exact count.
+ */
+export const ATTENTION_COLUMNS =
+  'id, created_at, status, payments!inner(id, provider_intent_id, amount_centavos, paid_at, refunded_at, status)';
+
+/** Payments query columns for the Refunded list. */
+export const REFUNDED_COLUMNS = 'id, provider_intent_id, amount_centavos, paid_at, refunded_at, sessions(id, created_at)';
+
+export interface AttentionRow {
+  paymentId: string;
+  sessionId: string;
+  intentId: string;
+  amountCentavos: number;
+  paidAt: string | null;
+  sessionCreatedAt: string;
+  label: string;
+}
+
+export interface RefundedRow {
+  paymentId: string;
+  sessionId: string | null;
+  intentId: string;
+  amountCentavos: number;
+  paidAt: string | null;
+  refundedAt: string;
+  sessionCreatedAt: string | null;
+}
+
+const str = (v: unknown): string | null => (typeof v === 'string' && v.length > 0 ? v : null);
+const one = (embed: unknown): Record<string, unknown> | null => {
+  const v = Array.isArray(embed) ? embed[0] : embed;
+  return v && typeof v === 'object' ? (v as Record<string, unknown>) : null;
+};
+
+/**
+ * Flagged sessions (paid after cancel, or paid and not completed after 10 minutes, exactly core `needsAttention`)
+ * whose payment is paid and NOT marked refunded. Malformed rows are dropped.
+ */
+export function toAttentionRows(rows: Record<string, unknown>[], now: Date): AttentionRow[] {
+  const out: AttentionRow[] = [];
+  for (const r of rows) {
+    const sessionId = str(r.id);
+    const createdAt = str(r.created_at);
+    const status = str(r.status);
+    const p = one(r.payments);
+    if (!sessionId || !createdAt || !status || !p) continue;
+    if (!needsAttention({ status, createdAt }, now)) continue;
+    const paymentId = str(p.id);
+    const intentId = str(p.provider_intent_id);
+    if (!paymentId || !intentId || typeof p.amount_centavos !== 'number') continue;
+    if (p.status !== 'paid' || p.refunded_at != null) continue;
+    out.push({
+      paymentId,
+      sessionId,
+      intentId,
+      amountCentavos: p.amount_centavos,
+      paidAt: str(p.paid_at),
+      sessionCreatedAt: createdAt,
+      label: ATTENTION_LABELS[status] ?? statusLabel(status),
+    });
+  }
+  return out;
+}
+
+/** Payments marked refunded, newest first as queried. Malformed rows (or ones not refunded) are dropped. */
+export function toRefundedRows(rows: Record<string, unknown>[]): RefundedRow[] {
+  const out: RefundedRow[] = [];
+  for (const r of rows) {
+    const paymentId = str(r.id);
+    const intentId = str(r.provider_intent_id);
+    const refundedAt = str(r.refunded_at);
+    if (!paymentId || !intentId || !refundedAt || typeof r.amount_centavos !== 'number') continue;
+    const s = one(r.sessions);
+    out.push({
+      paymentId,
+      sessionId: s ? str(s.id) : null,
+      intentId,
+      amountCentavos: r.amount_centavos,
+      paidAt: str(r.paid_at),
+      refundedAt,
+      sessionCreatedAt: s ? str(s.created_at) : null,
+    });
+  }
+  return out;
 }

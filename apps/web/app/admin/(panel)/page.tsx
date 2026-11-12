@@ -1,7 +1,10 @@
-import { formatPeso, manilaDayKey, needsAttention, summarizeDay } from '@pb/core';
+import { formatPeso, manilaDayKey, summarizeDay } from '@pb/core';
 import { requireAdmin } from '@/lib/auth';
 import {
-  ATTENTION_LABELS,
+  ATTENTION_COLUMNS,
+  ATTENTION_LIMIT,
+  REFUNDED_COLUMNS,
+  REFUNDED_LIMIT,
   allRowsOrNull,
   attentionFilter,
   attentionOverflowNote,
@@ -9,14 +12,16 @@ import {
   onePayment,
   sessionAmountLabel,
   statusLabel,
+  toAttentionRows,
+  toRefundedRows,
   type PaymentRef,
 } from '@/lib/dashboard';
+import { RefundButton } from './refund-button';
 
 export const dynamic = 'force-dynamic';
 
 const LOAD_ERROR = 'Could not load sales data. Refresh the page to try again.';
 const DAY_MS = 24 * 60 * 60 * 1000;
-const ATTENTION_LIMIT = 100;
 
 type SessionRow = {
   id: string;
@@ -51,19 +56,29 @@ export default async function Dashboard() {
 
   // Money comes only from server-written payments, grouped by paid_at in Asia/Manila.
   // Exact counts: the Today total must never be a silently truncated sum, and capped refund signals are announced.
-  const [paidToday, attention, recent] = await Promise.all([
+  const [paidToday, attention, refunded, recent] = await Promise.all([
     supabase
       .from('payments')
       .select('amount_centavos, paid_at', { count: 'exact' })
       .eq('status', 'paid')
       .gte('paid_at', dayStart.toISOString())
       .lt('paid_at', dayEnd.toISOString()),
+    // One row per flagged session with a paid payment that is not marked refunded (payments!inner: the payment
+    // filters also apply to the sessions and their exact count).
     supabase
       .from('sessions')
-      .select(SESSION_COLUMNS, { count: 'exact' })
+      .select(ATTENTION_COLUMNS, { count: 'exact' })
       .or(attentionFilter(now))
+      .eq('payments.status', 'paid')
+      .is('payments.refunded_at', null)
       .order('created_at', { ascending: false })
       .limit(ATTENTION_LIMIT),
+    supabase
+      .from('payments')
+      .select(REFUNDED_COLUMNS)
+      .not('refunded_at', 'is', null)
+      .order('refunded_at', { ascending: false })
+      .limit(REFUNDED_LIMIT),
     supabase.from('sessions').select(SESSION_COLUMNS).order('created_at', { ascending: false }).limit(50),
   ]);
 
@@ -74,10 +89,9 @@ export default async function Dashboard() {
         today,
       )
     : null;
-  const flagged = attention.error
-    ? null
-    : toSessionRows(attention.data ?? []).filter((s) => needsAttention({ status: s.status, createdAt: s.created_at }, now));
+  const flagged = attention.error ? null : toAttentionRows(attention.data ?? [], now);
   const overflow = flagged ? attentionOverflowNote(flagged.length, attention.count) : null;
+  const refundedRows = refunded.error ? null : toRefundedRows(refunded.data ?? []);
   const sessions = recent.error ? null : toSessionRows(recent.data ?? []);
 
   return (
@@ -120,16 +134,46 @@ export default async function Dashboard() {
               </p>
             )}
             <ul className="attention-list" data-testid="attention-list">
-              {flagged.map((s) => (
-                <li key={s.id} data-session-id={s.id}>
-                  <span className="attention-time">{formatManilaTime(s.created_at)}</span>
-                  <span className="attention-amount">{sessionAmountLabel(s, s.payment)}</span>
-                  <span className="attention-label">{ATTENTION_LABELS[s.status]}</span>
+              {flagged.map((a) => (
+                <li key={a.paymentId} data-session-id={a.sessionId} data-payment-id={a.paymentId}>
+                  <span className="attention-amount">{formatPeso(a.amountCentavos)}</span>
+                  <span className="attention-time">Paid {a.paidAt ? formatManilaTime(a.paidAt) : '—'}</span>
+                  <span className="attention-label">{a.label}</span>
+                  <span className="attention-intent" data-testid="attention-intent">
+                    {a.intentId}
+                  </span>
+                  <span className="attention-meta">Session started {formatManilaTime(a.sessionCreatedAt)}</span>
+                  <RefundButton paymentId={a.paymentId} mode="mark" />
                 </li>
               ))}
             </ul>
-            <p className="hint">An offline booth&apos;s sessions appear here until it reconnects.</p>
+            <p className="hint">
+              Search the PayMongo dashboard for the payment intent id (pi_…), refund it there, then press Mark refunded.
+              An offline booth&apos;s sessions appear here until it reconnects.
+            </p>
           </>
+        )}
+        {refundedRows === null ? (
+          <p className="alert" role="alert">
+            {LOAD_ERROR}
+          </p>
+        ) : (
+          refundedRows.length > 0 && (
+            <details className="refunded" data-testid="refunded">
+              <summary>Refunded (last {REFUNDED_LIMIT})</summary>
+              <ul className="attention-list refunded-list" data-testid="refunded-list">
+                {refundedRows.map((r) => (
+                  <li key={r.paymentId} data-session-id={r.sessionId ?? undefined} data-payment-id={r.paymentId}>
+                    <span className="attention-amount">{formatPeso(r.amountCentavos)}</span>
+                    <span className="attention-time">Refunded {formatManilaTime(r.refundedAt)}</span>
+                    <span className="attention-intent">{r.intentId}</span>
+                    <span className="attention-meta">Paid {r.paidAt ? formatManilaTime(r.paidAt) : '—'}</span>
+                    <RefundButton paymentId={r.paymentId} mode="undo" />
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )
         )}
       </section>
 

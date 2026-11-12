@@ -421,6 +421,38 @@ select[aria-invalid='true'] {
   font-weight: 600;
 }
 
+.attention-intent {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
+}
+
+.attention-meta {
+  color: var(--muted);
+}
+
+.refund-action {
+  flex-basis: 100%;
+}
+
+.refund-confirm-text {
+  align-self: center;
+  font-weight: 600;
+}
+
+.refunded {
+  margin-top: 16px;
+}
+
+.refunded summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.refunded-list li {
+  border-color: var(--muted);
+}
+
 .table-wrap {
   overflow-x: auto;
   background: #fff;

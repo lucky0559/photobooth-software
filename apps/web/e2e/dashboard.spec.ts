@@ -99,6 +99,48 @@ test('the dashboard shows today’s paid sales, the refund list and recent sessi
   expect(manilaDay('2026-11-01T15:59:00Z')).not.toBe(manilaDay('2026-11-01T16:00:00Z'));
 });
 
+test('needs attention shows the intent id and paid time; Mark refunded moves a payment to Refunded and Undo brings it back', async ({ page }) => {
+  test.skip(nearMidnight, 'no seeded sessions near Manila midnight');
+  const { data, error } = await serviceClient()
+    .from('payments')
+    .select('id, session_id, provider_intent_id')
+    .in('session_id', [ids.paidAfterCancel, ids.stuckPaid]);
+  if (error) throw error;
+  const bySession = new Map(data.map((p) => [p.session_id as string, p as { id: string; provider_intent_id: string }]));
+  const stuckPay = bySession.get(ids.stuckPaid)!;
+  const pacPay = bySession.get(ids.paidAfterCancel)!;
+
+  await signInAsAdmin(page);
+  const attentionRow = (sessionId: string) => page.locator(`[data-testid="attention-list"] li[data-session-id="${sessionId}"]`);
+  await expect(attentionRow(ids.paidAfterCancel)).toContainText(pacPay.provider_intent_id);
+  await expect(attentionRow(ids.stuckPaid)).toContainText(stuckPay.provider_intent_id);
+  await expect(attentionRow(ids.stuckPaid)).toContainText(/Paid \w{3} \d{1,2}, \d{1,2}:\d{2}\s[AP]M/);
+  await expect(attentionRow(ids.stuckPaid)).toContainText('Session started');
+
+  // Inline confirmation: the first click only asks.
+  await attentionRow(ids.stuckPaid).getByRole('button', { name: 'Mark refunded' }).click();
+  await attentionRow(ids.stuckPaid).getByRole('button', { name: 'Cancel' }).click();
+  await expect(attentionRow(ids.stuckPaid).getByRole('button', { name: 'Mark refunded' })).toBeVisible();
+  await attentionRow(ids.stuckPaid).getByRole('button', { name: 'Mark refunded' }).click();
+  await attentionRow(ids.stuckPaid).getByRole('button', { name: 'Yes, mark refunded' }).click();
+
+  await expect(attentionRow(ids.stuckPaid)).toHaveCount(0);
+  await expect(attentionRow(ids.paidAfterCancel)).toHaveCount(1);
+  const refundedRow = page.locator(`[data-testid="refunded-list"] li[data-payment-id="${stuckPay.id}"]`);
+  await page.getByText(/Refunded \(last 20\)/).click();
+  await expect(refundedRow).toBeVisible();
+  await expect(refundedRow).toContainText(stuckPay.provider_intent_id);
+  const { data: marked } = await serviceClient().from('payments').select('refunded_at, status').eq('id', stuckPay.id).single();
+  expect(marked?.refunded_at).toBeTruthy();
+  expect(marked?.status).toBe('paid');
+
+  await refundedRow.getByRole('button', { name: 'Undo' }).click();
+  await expect(attentionRow(ids.stuckPaid)).toHaveCount(1);
+  await expect(refundedRow).toHaveCount(0);
+  const { data: undone } = await serviceClient().from('payments').select('refunded_at').eq('id', stuckPay.id).single();
+  expect(undone?.refunded_at).toBeNull();
+});
+
 const VIEWPORTS = [
   { label: 'phone', width: 390, height: 844 },
   { label: 'desktop', width: 1280, height: 800 },
