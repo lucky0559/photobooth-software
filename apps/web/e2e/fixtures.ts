@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, type Page } from '@playwright/test';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import { createServerClient } from '@supabase/ssr';
 
 export const ADMIN = { email: 'admin@local.test', password: 'localpass123' };
 export const KIOSK = { email: 'kiosk@local.test', password: 'localpass123' };
@@ -20,18 +21,20 @@ function chunk(type: string, data: Buffer): Buffer {
 }
 
 /**
- * Minimal RGBA PNG encoder. The first `noiseRows` rows are random pixels (incompressible, to make
- * a large file); the rest are fully transparent.
+ * Minimal PNG encoder: RGBA (colour type 6, the default) or opaque RGB (colour type 2). The first
+ * `noiseRows` rows are random pixels (incompressible, to make a large file); the rest are zero
+ * (fully transparent in RGBA).
  */
-export function makePng(width: number, height: number, noiseRows = 0): Buffer {
-  const stride = width * 4 + 1;
-  const raw = Buffer.alloc(stride * height); // filter byte 0 + transparent pixels
-  for (let y = 0; y < Math.min(noiseRows, height); y++) randomBytes(width * 4).copy(raw, y * stride + 1);
+export function makePng(width: number, height: number, noiseRows = 0, colorType: 2 | 6 = 6): Buffer {
+  const channels = colorType === 6 ? 4 : 3;
+  const stride = width * channels + 1;
+  const raw = Buffer.alloc(stride * height); // filter byte 0 + zero pixels
+  for (let y = 0; y < Math.min(noiseRows, height); y++) randomBytes(width * channels).copy(raw, y * stride + 1);
   const ihdr = Buffer.alloc(13);
   ihdr.writeUInt32BE(width, 0);
   ihdr.writeUInt32BE(height, 4);
   ihdr[8] = 8; // bit depth
-  ihdr[9] = 6; // RGBA
+  ihdr[9] = colorType;
   return Buffer.concat([
     Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
     chunk('IHDR', ihdr),
@@ -57,9 +60,11 @@ export function writeFixtures() {
     strip: join(dir, 'strip-600x1800.png'),
     wide: join(dir, 'wide-1200x1800.png'),
     fakeJpeg: join(dir, 'photo.png'),
+    opaque: join(dir, 'opaque-600x1800.png'),
   };
-  writeFileSync(files.strip, makePng(600, 1800, 900));
-  writeFileSync(files.wide, makePng(1200, 1800));
+  writeFileSync(files.strip, makePng(600, 1800, 900)); // RGBA
+  writeFileSync(files.wide, makePng(1200, 1800)); // RGBA
+  writeFileSync(files.opaque, makePng(600, 1800, 0, 2)); // RGB, no tRNS: no transparent areas
   writeFileSync(files.fakeJpeg, makeFakeJpeg());
   return files;
 }
@@ -72,6 +77,46 @@ export function serviceClient(): SupabaseClient {
   const host = new URL(url).hostname;
   if (host !== '127.0.0.1' && host !== 'localhost') throw new Error('e2e cleanup refuses to run against a non-local Supabase');
   return createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
+}
+
+function localEnv(): { url: string; anonKey: string } {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url || !anonKey) throw new Error('Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY');
+  return { url, anonKey };
+}
+
+/** A plain supabase-js client signed in as `who` (like the kiosk app's own login). */
+export async function signedInClient(who: { email: string; password: string }): Promise<SupabaseClient> {
+  const { url, anonKey } = localEnv();
+  const client = createClient(url, anonKey, { auth: { persistSession: false, autoRefreshToken: false } });
+  const { error } = await client.auth.signInWithPassword(who);
+  if (error) throw error;
+  return client;
+}
+
+/**
+ * Signs `who` in through @supabase/ssr with an in-memory cookie jar and returns the resulting auth
+ * cookies, ready for `context.addCookies` (same names/encoding the web app reads).
+ */
+export async function sessionCookies(who: { email: string; password: string }, baseURL: string) {
+  const { url, anonKey } = localEnv();
+  const jar = new Map<string, string>();
+  const client = createServerClient(url, anonKey, {
+    cookies: {
+      getAll: () => [...jar].map(([name, value]) => ({ name, value })),
+      setAll: (list) => {
+        for (const { name, value } of list) {
+          if (value) jar.set(name, value);
+          else jar.delete(name);
+        }
+      },
+    },
+  });
+  const { error } = await client.auth.signInWithPassword(who);
+  if (error) throw error;
+  const host = new URL(baseURL).hostname;
+  return [...jar].map(([name, value]) => ({ name, value, domain: host, path: '/', sameSite: 'Lax' as const }));
 }
 
 export async function signIn(page: Page, who: { email: string; password: string }) {

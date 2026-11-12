@@ -29,15 +29,18 @@ export async function signIn(formData: FormData): Promise<void> {
   if (error) redirect('/admin/login?error=invalid');
 
   if (!(await getAdminUser(supabase))) {
-    await supabase.auth.signOut();
+    // 'local' ends only the session just created here. The default ('global') would revoke every refresh
+    // token of that user, so typing the kiosk's credentials here would knock the booth offline.
+    await supabase.auth.signOut({ scope: 'local' });
     redirect('/admin/login?error=not_admin');
   }
 
   redirect(next);
 }
 
+/** Sign out this browser only ('local'): an admin signed in on another device stays signed in. */
 export async function signOut(): Promise<void> {
   const supabase = await createClient();
-  await supabase.auth.signOut();
+  await supabase.auth.signOut({ scope: 'local' });
   redirect('/admin/login');
 }

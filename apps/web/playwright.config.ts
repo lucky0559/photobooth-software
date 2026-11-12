@@ -24,7 +24,8 @@ export default defineConfig({
     // Production build, so the e2e run also covers `next build`, the CSP and the body-size limits.
     command: `pnpm run build && pnpm exec next start --port ${PORT} --hostname 127.0.0.1`,
     url: `http://127.0.0.1:${PORT}/admin/login`,
-    reuseExistingServer: false,
+    // PW_REUSE_SERVER=1 reuses an already running `next start --port 3100` (debugging only).
+    reuseExistingServer: process.env.PW_REUSE_SERVER === '1',
     timeout: 300_000,
   },
 });
