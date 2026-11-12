@@ -2,7 +2,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 
-select plan(56);
+select plan(63);
 
 -- ---------------------------------------------------------------------------
 -- Fixtures: kiosk A 22222222-..., kiosk B 33333333-...
@@ -91,6 +91,9 @@ begin
     'dddddddd-0000-0000-0000-000000000001', 'tokC4aaaaaaaaaaaaaaaaa', 15000, 'pi_c4', null);
   perform public.create_payment_session('c0000000-0000-0000-0000-000000000005', '22222222-2222-2222-2222-222222222222',
     'dddddddd-0000-0000-0000-000000000001', 'tokC5aaaaaaaaaaaaaaaaa', 15000, 'pi_c5', null);
+  perform public.create_payment_session('c0000000-0000-0000-0000-000000000006', '22222222-2222-2222-2222-222222222222',
+    'dddddddd-0000-0000-0000-000000000001', 'tokC6aaaaaaaaaaaaaaaaa', 15000, 'pi_c6', null);
+  perform public.mark_payment_paid('pi_c6', now());
 end $$;
 reset role;
 update public.payments set status = 'failed' where provider_intent_id = 'pi_c5';
@@ -182,6 +185,42 @@ select throws_ok(
 select throws_ok(
   $$ update public.sessions set status = 'cancelled' where id = 'c0000000-0000-0000-0000-000000000004' $$,
   'P0001', 'kiosk may only set status free or completed', 'kiosk cannot cancel a session itself');
+
+-- Amount self-heal (fix round 1): on a session WITH a payment the server's amount is kept silently, so a kiosk that
+-- cached an old price can still complete (and its sync queue does not jam). Without a payment it still raises.
+select lives_ok(
+  $$ insert into public.sessions (id, template_id, download_token, amount_centavos, status, created_at, completed_at)
+     values ('c0000000-0000-0000-0000-000000000006', 'dddddddd-0000-0000-0000-000000000001',
+             'tokC6aaaaaaaaaaaaaaaaa', 9900, 'completed', now(), now())
+     on conflict (id) do update set
+       template_id = excluded.template_id, download_token = excluded.download_token,
+       amount_centavos = excluded.amount_centavos, status = excluded.status,
+       print_error = excluded.print_error, created_at = excluded.created_at,
+       completed_at = excluded.completed_at $$,
+  'kiosk upsert with a stale amount completes a paid-payment session');
+select results_eq(
+  $$ select amount_centavos, status from public.sessions where id = 'c0000000-0000-0000-0000-000000000006' $$,
+  $$ values (15000, 'completed'::text) $$,
+  'the stored amount is unchanged and the session is completed');
+select lives_ok(
+  $$ update public.sessions set amount_centavos = 2000 where id = 'c0000000-0000-0000-0000-000000000004' $$,
+  'kiosk amount change on a session with a pending payment does not raise');
+select is((select amount_centavos from public.sessions where id = 'c0000000-0000-0000-0000-000000000004'), 15000,
+  'the pending-payment session keeps the server amount');
+select lives_ok(
+  $$ insert into public.sessions (id, template_id, download_token, amount_centavos, status)
+     values ('c0000000-0000-0000-0000-000000000007', 'dddddddd-0000-0000-0000-000000000001', 'tokC7aaaaaaaaaaaaaaaaa', 0, 'free') $$,
+  'kiosk inserts a free session');
+select throws_ok(
+  $$ update public.sessions set amount_centavos = 2000 where id = 'c0000000-0000-0000-0000-000000000007' $$,
+  'P0001', 'kiosk may not change amount_centavos', 'free session (no payment) amount change is still rejected');
+reset role;
+
+set local request.jwt.claims = '{"role":"service_role"}';
+set local role service_role;
+update public.sessions set amount_centavos = 16000 where id = 'c0000000-0000-0000-0000-000000000004';
+select is((select amount_centavos from public.sessions where id = 'c0000000-0000-0000-0000-000000000004'), 16000,
+  'the service role is exempt (can change the amount)');
 reset role;
 
 -- ---------------------------------------------------------------------------
