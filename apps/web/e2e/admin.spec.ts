@@ -120,14 +120,24 @@ test('templates: upload, set active, guard archive, reject bad files', async ({ 
   await expect(row.getByText('Strip (2×6)')).toBeVisible();
   await expect(row.getByRole('img')).toBeVisible();
 
+  // A second tab opened now still shows "Archive" on our row after it becomes active (stale page).
+  const stale = await page.context().newPage();
+  await stale.goto('/admin/templates');
+  const staleRow = templateRow(stale, name);
+  await expect(staleRow.getByRole('button', { name: 'Archive' })).toBeVisible();
+
   const seedRow = page.getByRole('listitem').filter({ has: page.getByText('Sample strip', { exact: true }) });
   await expect(seedRow.getByText('Active', { exact: true })).toBeVisible();
+  await expect(seedRow.getByRole('button', { name: 'Archive' })).toHaveCount(0); // hidden on the active row
   await row.getByRole('button', { name: 'Set active' }).click();
   await expect(row.getByText('Active', { exact: true })).toBeVisible();
   await expect(seedRow.getByText('Active', { exact: true })).toHaveCount(0);
+  await expect(row.getByRole('button', { name: 'Archive' })).toHaveCount(0);
 
-  await row.getByRole('button', { name: 'Archive' }).click();
-  await expect(row.getByText('Choose another active template first')).toBeVisible();
+  // The server refuses even when the (stale) page offers the button.
+  await staleRow.getByRole('button', { name: 'Archive' }).click();
+  await expect(staleRow.getByText('Choose another active template first')).toBeVisible();
+  await stale.close();
 
   await upload(page, `${RUN} wide`, 'strip_2x6', files.wide);
   await expect(page.getByText(STRIP_MESSAGE)).toBeVisible();
@@ -136,6 +146,11 @@ test('templates: upload, set active, guard archive, reject bad files', async ({ 
   await upload(page, `${RUN} jpeg`, 'strip_2x6', files.fakeJpeg);
   await expect(page.getByText(PNG_MESSAGE)).toBeVisible();
   await expect(templateRow(page, `${RUN} jpeg`)).toHaveCount(0);
+
+  // Right size, but RGB without tRNS: no transparent photo areas.
+  await upload(page, `${RUN} opaque`, 'strip_2x6', files.opaque);
+  await expect(page.getByText(PNG_MESSAGE)).toBeVisible();
+  await expect(templateRow(page, `${RUN} opaque`)).toHaveCount(0);
   await page.screenshot({ path: 'test-results/screens/templates-errors-desktop.png', fullPage: true });
 
   // Hand the active slot back to the seeded template, then archive ours.
@@ -147,3 +162,30 @@ test('templates: upload, set active, guard archive, reject bad files', async ({ 
   const { data } = await serviceClient().from('settings').select('active_template_id').eq('id', 1).single();
   expect(data?.active_template_id).toBe(SEED_TEMPLATE_ID);
 });
+
+const UPLOAD_FAILED = 'Upload failed. The file may be larger than this server accepts (limit 10 MB).';
+
+for (const vp of [
+  { label: 'phone', width: 390, height: 844 },
+  { label: 'desktop', width: 1280, height: 800 },
+] as const) {
+  test(`templates: a rejected upload request shows a fixed message, not an error page (${vp.label})`, async ({ page }) => {
+    await page.setViewportSize({ width: vp.width, height: vp.height });
+    await signInAsAdmin(page);
+    await page.goto('/admin/templates');
+    await expect(page.getByText('PNG up to 10 MB')).toBeVisible();
+
+    // Simulate the host refusing the body (Vercel answers 413 above its limit) before the action runs.
+    await page.route('**/admin/templates', async (route) => {
+      if (route.request().method() === 'POST' && route.request().headers()['next-action']) {
+        await route.fulfill({ status: 413, contentType: 'text/plain', body: 'Request Entity Too Large' });
+      } else {
+        await route.continue();
+      }
+    });
+    await upload(page, `${RUN} too big ${vp.label}`, 'strip_2x6', files.strip);
+    await expect(page.getByRole('alert').filter({ hasText: UPLOAD_FAILED })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Upload a template' })).toBeVisible(); // still the page
+    await page.screenshot({ path: `test-results/screens/templates-upload-failed-${vp.label}.png`, fullPage: true });
+  });
+}

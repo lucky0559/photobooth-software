@@ -45,9 +45,17 @@ Started by Task 5; later tasks extend it.
   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`: the anon / publishable key (browser-safe; RLS enforces admin-only access).
   - `SUPABASE_SERVICE_ROLE_KEY`: server only, never `NEXT_PUBLIC_`. The Task 12 pages do not use it; leave it unset
     in Vercel until a feature needs it.
+  - `NEXT_PUBLIC_TEMPLATE_UPLOAD_MAX_BYTES` (optional, whole bytes, build time): the largest template the upload
+    form sends. Default and ceiling 10485760 (10 MB, the template maximum the server always enforces). **Vercel
+    Hobby: set `4404020`** (4.2 MiB, shown as "4.2 MB"), because Vercel Functions reject request bodies over 4.5 MB;
+    this leaves room for the multipart overhead whether that limit is counted in MB or MiB.
 - Vercel Hobby (free tier, testing only): set the project root to `apps/web`; the build is `next build` with the
   pnpm workspace install. Server Action bodies are capped at 11 MB in `next.config.ts` for 10 MB template uploads, but
-  Vercel Functions accept request bodies of about 4.5 MB, so larger templates fail on Vercel with a platform error
-  until uploads go directly to Storage (signed upload URL). Local and self-hosted `next start` accept the full 10 MB.
+  on Vercel the platform limit (~4.5 MB) wins: with the variable above the form refuses larger files up front, and a
+  rejected request shows "Upload failed. The file may be larger than this server accepts (limit N MB)." Larger
+  templates need the follow-up direct-to-Storage upload (signed upload URL). Local and self-hosted `next start` accept
+  the full 10 MB.
+- Login rate limiting is left to Supabase Auth's built-in limits (`[auth.rate_limit]` in `config.toml` / dashboard);
+  the admin app adds none of its own.
 - Admin accounts: create the user in Supabase Auth, then `insert into profiles (user_id, role) values ('<id>', 'admin')`.
 - Local e2e: `pnpm --filter web e2e` (local Supabase running; builds and serves on :3100, restores the seeded data).

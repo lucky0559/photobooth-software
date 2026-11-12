@@ -1,24 +1,36 @@
 'use client';
 
 import { useActionState, useState } from 'react';
-import { TEMPLATE_MAX_BYTES, type LayoutId, type Result, type Template } from '@pb/core';
+import type { LayoutId, Result, Template } from '@pb/core';
+import { effectiveUploadLimit, formatMb } from '@/lib/upload-limit';
 import { uploadTemplate } from './actions';
 import { LAYOUT_LABELS } from './layouts';
 
 const FILE_ERROR_KEYS = ['file', 'mime', 'size', 'bytes'] as const;
+// What this deployment's host accepts (inlined at build time); the server still enforces the 10 MB maximum.
+const UPLOAD_LIMIT = effectiveUploadLimit(process.env.NEXT_PUBLIC_TEMPLATE_UPLOAD_MAX_BYTES);
+const LIMIT_TEXT = formatMb(UPLOAD_LIMIT);
 
 export function UploadForm() {
   const [name, setName] = useState('');
   const [layout, setLayout] = useState<LayoutId>('strip_2x6');
   const [state, formAction, pending] = useActionState<Result<Template> | null, FormData>(async (_prev, formData) => {
-    // Early, friendlier answer for an oversized file (the server checks again and Next caps the body).
+    // Answer before sending: a body over the host's limit never reaches the action (e.g. a platform 413).
     const file = formData.get('file');
-    if (file instanceof File && file.size > TEMPLATE_MAX_BYTES) {
-      return { ok: false, errors: { bytes: 'Template must be 10 MB or smaller' } };
+    if (file instanceof File && file.size > UPLOAD_LIMIT) {
+      return { ok: false, errors: { bytes: `Template must be ${LIMIT_TEXT} or smaller` } };
     }
-    const result = await uploadTemplate(formData);
-    if (result.ok) setName('');
-    return result;
+    try {
+      const result = await uploadTemplate(formData);
+      if (result.ok) setName('');
+      return result;
+    } catch {
+      // Rejected request (413 from the host, network drop, …): a fixed message instead of an error page.
+      return {
+        ok: false,
+        errors: { _: `Upload failed. The file may be larger than this server accepts (limit ${LIMIT_TEXT}).` },
+      };
+    }
   }, null);
 
   const errors = state && !state.ok ? state.errors : {};
@@ -84,7 +96,7 @@ export function UploadForm() {
           aria-describedby={fileDescribedBy}
         />
         <p id="file-hint" className="hint">
-          Strip: 600 × 1800 px. 4R: 1200 × 1800 px. PNG up to 10 MB, transparent where the photos go.
+          Strip: 600 × 1800 px. 4R: 1200 × 1800 px. PNG up to {LIMIT_TEXT}, transparent where the photos go.
         </p>
         {fileErrors.map((e) => (
           <p key={e.key} id={`file-error-${e.key}`} className="error">

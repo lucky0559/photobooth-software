@@ -39,16 +39,19 @@ export function TemplateItem({
           {active && <span className="badge">Active</span>}
         </p>
         <p className="template-meta">{LAYOUT_LABELS[layout]}</p>
-        <form className="actions" aria-describedby={error ? errorId : undefined}>
-          {!active && (
+        {active ? (
+          <p className="hint">Kiosks print with this one. To archive it, set another template active first.</p>
+        ) : (
+          <form className="actions" aria-describedby={error ? errorId : undefined}>
             <button type="submit" className="btn" disabled={pending} formAction={() => run('activate')}>
               Set active
             </button>
-          )}
-          <button type="submit" className="btn" disabled={pending} formAction={() => run('archive')}>
-            Archive
-          </button>
-        </form>
+            {/* The server also refuses to archive the active template (a stale page may still show this button). */}
+            <button type="submit" className="btn" disabled={pending} formAction={() => run('archive')}>
+              Archive
+            </button>
+          </form>
+        )}
         {error && (
           <p id={errorId} className="error" role="alert">
             {error}
