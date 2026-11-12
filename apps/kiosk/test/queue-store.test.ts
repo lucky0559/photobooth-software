@@ -1,6 +1,6 @@
 import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { addJobs, applyResult, EMPTY_QUEUE, validateQueueJobs, validateQueueResult } from '../src/main/queue-store';
+import { addJobs, applyResult, EMPTY_QUEUE, queueFileValidator, validateQueueJobs, validateQueueResult } from '../src/main/queue-store';
 import type { QueueJob } from '../src/shared/queue';
 
 const dir = resolve('/data/photos');
@@ -114,5 +114,28 @@ describe('addJobs / applyResult', () => {
   it('ignores ids it does not know', () => {
     const q = addJobs(EMPTY_QUEUE, [a]);
     expect(applyResult(q, { done: [J2], failed: [{ id: J2, error: 'x', nextAttemptAt: 1 }] }, 0)).toEqual(q);
+  });
+});
+
+describe('queueFileValidator', () => {
+  const isQueueFile = queueFileValidator(dir);
+  const done = { sessionId: SID, filePath: join(dir, `${SID}.jpg`), completedAt: 5 };
+
+  it('accepts an empty queue and stored jobs with retry state', () => {
+    expect(isQueueFile(EMPTY_QUEUE)).toBe(true);
+    expect(isQueueFile({ jobs: [upsertJob, uploadJob], completedUploads: [done] })).toBe(true);
+  });
+
+  it('rejects wrong shapes', () => {
+    expect(isQueueFile(null)).toBe(false);
+    expect(isQueueFile({ jobs: {}, completedUploads: [] })).toBe(false);
+    expect(isQueueFile({ jobs: [], completedUploads: 'x' })).toBe(false);
+    expect(isQueueFile({ jobs: [{ ...upsertJob, attempts: -1 }], completedUploads: [] })).toBe(false);
+    expect(isQueueFile({ jobs: [{ ...upsertJob, nextAttemptAt: 'soon' }], completedUploads: [] })).toBe(false);
+    expect(isQueueFile({ jobs: [{ ...upsertJob, lastError: 5 }], completedUploads: [] })).toBe(false);
+    expect(isQueueFile({ jobs: [{ ...upsertJob, row: { ...row, id: 'x' } }], completedUploads: [] })).toBe(false);
+    expect(isQueueFile({ jobs: [{ ...uploadJob, filePath: '/etc/passwd' }], completedUploads: [] })).toBe(false);
+    expect(isQueueFile({ jobs: [{ ...uploadJob, kind: 'other' }], completedUploads: [] })).toBe(false);
+    expect(isQueueFile({ jobs: [], completedUploads: [{ ...done, completedAt: null }] })).toBe(false);
   });
 });

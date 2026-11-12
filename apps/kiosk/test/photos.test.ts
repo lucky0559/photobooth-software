@@ -1,6 +1,7 @@
 import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
+  findOrphanPhotos,
   PHOTO_RETENTION_MS,
   photoPath,
   resolvePhotoReadPath,
@@ -70,5 +71,45 @@ describe('selectPhotosToDelete', () => {
     const fresh = { sessionId: 'c', filePath: '/p/c.jpg', completedAt: now - 7 * DAY + 1 };
     expect(selectPhotosToDelete(now, [old, fresh, older])).toEqual([old, older]);
     expect(selectPhotosToDelete(now, [])).toEqual([]);
+  });
+});
+
+describe('findOrphanPhotos', () => {
+  const HOUR = 60 * 60 * 1000;
+  const now = 10 * HOUR;
+  const A = '00000000-0000-4000-8000-00000000000a';
+  const B = '00000000-0000-4000-8000-00000000000b';
+  const C = '00000000-0000-4000-8000-00000000000c';
+  const D = '00000000-0000-4000-8000-00000000000d';
+  const job = (sessionId: string) => ({
+    id: '11111111-1111-4111-8111-111111111111',
+    kind: 'upload_photo' as const,
+    sessionId,
+    filePath: join(dir, `${sessionId}.jpg`),
+    attempts: 0,
+    nextAttemptAt: 0,
+    lastError: null,
+  });
+
+  it('counts old photos with no pending upload job and no completed upload', () => {
+    const files = [
+      { name: `${A}.jpg`, mtimeMs: now - 2 * HOUR }, // pending upload job
+      { name: `${B}.jpg`, mtimeMs: now - 2 * HOUR }, // already uploaded
+      { name: `${C}.jpg`, mtimeMs: now - 2 * HOUR }, // orphan
+      { name: `${D}.jpg`, mtimeMs: now - HOUR + 1 }, // too recent: a session may still be in flight
+      { name: `${D}.jpg.tmp`, mtimeMs: 0 }, // not a photo
+      { name: 'notes.txt', mtimeMs: 0 },
+    ];
+    const queue = {
+      jobs: [job(A)],
+      completedUploads: [{ sessionId: B, filePath: join(dir, `${B}.jpg`), completedAt: now }],
+    };
+    expect(findOrphanPhotos(files, queue, now)).toEqual([`${C}.jpg`]);
+  });
+
+  it('treats a photo exactly 1 hour old as old enough', () => {
+    expect(findOrphanPhotos([{ name: `${C}.jpg`, mtimeMs: now - HOUR }], { jobs: [], completedUploads: [] }, now)).toEqual([
+      `${C}.jpg`,
+    ]);
   });
 });

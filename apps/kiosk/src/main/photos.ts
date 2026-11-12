@@ -1,5 +1,5 @@
 import { isAbsolute, join, resolve, sep } from 'node:path';
-import { UUID_PATTERN } from '../shared/queue';
+import { UUID_PATTERN, type QueueJob } from '../shared/queue';
 import { validateJpegBytes } from './print';
 
 /** Local photos are deleted this long after their upload job completed. */
@@ -34,6 +34,29 @@ export function resolvePhotoReadPath(photosDir: string, path: unknown): string {
 }
 
 export const validateJpeg = validateJpegBytes;
+
+/** A photo younger than this may still belong to a session in flight. */
+export const ORPHAN_MIN_AGE_MS = 60 * 60 * 1000;
+
+/**
+ * Names of `<uuid>.jpg` files at least 1 hour old with no pending `upload_photo` job and no completed upload.
+ * Log-only: the session row cannot be rebuilt from a photo, so these are never re-uploaded automatically.
+ */
+export function findOrphanPhotos(
+  files: { name: string; mtimeMs: number }[],
+  queue: { jobs: QueueJob[]; completedUploads: CompletedUpload[] },
+  now: number,
+): string[] {
+  const known = new Set<string>(queue.completedUploads.map((u) => u.sessionId));
+  for (const j of queue.jobs) if (j.kind === 'upload_photo') known.add(j.sessionId);
+  return files
+    .filter((f) => {
+      if (!f.name.endsWith('.jpg')) return false;
+      const id = f.name.slice(0, -'.jpg'.length);
+      return UUID_PATTERN.test(id) && !known.has(id) && now - f.mtimeMs >= ORPHAN_MIN_AGE_MS;
+    })
+    .map((f) => f.name);
+}
 
 /** Uploads whose local photo is due for deletion (`completedAt` at least 7 days before `now`). */
 export function selectPhotosToDelete(now: number, completedUploads: CompletedUpload[]): CompletedUpload[] {
