@@ -18,6 +18,16 @@ describe('transition', () => {
     expect(transition(p, { type: 'PAYMENT_PAID' }, paid)).toEqual({ name: 'capture', sessionId: 's1', amountCentavos: 15000, shots: [] });
     expect(transition(p, { type: 'PAYMENT_CANCELLED' }, paid)).toEqual({ name: 'attract' });
   });
+  it('PAYMENT_PAID carries the server amount into capture', () => {
+    const p = { name: 'payment', sessionId: 's1', amountCentavos: 15000, startedAt: 0 } as KioskState;
+    expect(transition(p, { type: 'PAYMENT_PAID', amountCentavos: 17500 }, paid))
+      .toEqual({ name: 'capture', sessionId: 's1', amountCentavos: 17500, shots: [] });
+  });
+  it.each([-1, 1.5, Number.NaN, Infinity])('PAYMENT_PAID ignores an invalid amount (%s)', (bad) => {
+    const p = { name: 'payment', sessionId: 's1', amountCentavos: 15000, startedAt: 0 } as KioskState;
+    expect(transition(p, { type: 'PAYMENT_PAID', amountCentavos: bad }, paid))
+      .toEqual({ name: 'capture', sessionId: 's1', amountCentavos: 15000, shots: [] });
+  });
   it('collects shots then enters review with filter none', () => {
     let s = { name: 'capture', sessionId: 's1', amountCentavos: 0, shots: [] } as KioskState;
     s = transition(s, { type: 'SHOT_TAKEN', shotId: 'a', now: 0 }, paid);

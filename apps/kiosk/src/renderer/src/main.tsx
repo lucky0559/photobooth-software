@@ -38,6 +38,7 @@ if (import.meta.env.VITE_FAKE_API === '1') {
     lastSheetPixel,
     printCalls: () => (window.__pbPrintCalls ? window.__pbPrintCalls() : Promise.resolve(0)),
     queueLength: async () => (await window.kiosk.queueList()).length,
+    syncedSessions: () => (api instanceof FakeKioskApi ? [...api.sessions.values()] : []),
     createPaymentCalls: () => (api instanceof FakeKioskApi ? api.createPaymentCalls : 0),
   };
 }

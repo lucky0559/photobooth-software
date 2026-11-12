@@ -20,6 +20,8 @@ declare global {
       queueLength(): Promise<number>;
       /** `FakeKioskApi.createPaymentCalls`: one per paid session expected. */
       createPaymentCalls(): number;
+      /** Session rows the fake API has received from the sync queue. */
+      syncedSessions(): { id: string; amountCentavos: number; status: string }[];
       shotCount(): number;
       killCamera(): void;
       lastSheet(): Promise<{ width: number; height: number; type: string } | null>;

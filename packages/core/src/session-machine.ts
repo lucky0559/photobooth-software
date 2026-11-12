@@ -17,7 +17,8 @@ export type KioskState =
 
 export type KioskEvent =
   | { type: 'START'; sessionId: string; now: number }
-  | { type: 'PAYMENT_PAID' }
+  /** `amountCentavos`: the server's amount for this payment; it wins over the kiosk's cached one when valid. */
+  | { type: 'PAYMENT_PAID'; amountCentavos?: number }
   | { type: 'PAYMENT_CANCELLED' }
   | { type: 'SHOT_TAKEN'; shotId: string; now: number }
   | { type: 'CAMERA_ERROR' }
@@ -40,7 +41,9 @@ export function transition(state: KioskState, event: KioskEvent, settings: Kiosk
       return state;
     case 'payment':
       if (event.type === 'PAYMENT_PAID') {
-        return { name: 'capture', sessionId: state.sessionId, amountCentavos: state.amountCentavos, shots: [] };
+        const server = event.amountCentavos;
+        const amountCentavos = server !== undefined && Number.isInteger(server) && server >= 0 ? server : state.amountCentavos;
+        return { name: 'capture', sessionId: state.sessionId, amountCentavos, shots: [] };
       }
       if (event.type === 'PAYMENT_CANCELLED') return { name: 'attract' };
       return state;

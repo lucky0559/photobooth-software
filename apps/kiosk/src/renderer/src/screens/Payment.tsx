@@ -38,7 +38,7 @@ export function Payment({
   const [view, setView] = useState<View>('creating');
   const [cancelTapped, setCancelTapped] = useState(false);
   const flow = useRef<PaymentFlow | null>(null);
-  const { sessionId, amountCentavos } = state;
+  const { sessionId } = state;
 
   useEffect(() => {
     const created = createPaymentOnce(sessionId, () => {
@@ -50,14 +50,11 @@ export function Payment({
       payment: created,
       deadline,
       onReady: (p) => {
-        if (p.amountCentavos !== amountCentavos) {
-          console.warn(`Server amount ${p.amountCentavos} differs from local ${amountCentavos}; showing the server's`);
-        }
         setPayment(p);
         setView('ready');
       },
       onStatus: setView,
-      onPaid: () => dispatch({ type: 'PAYMENT_PAID' }),
+      onPaid: (serverAmount) => dispatch({ type: 'PAYMENT_PAID', amountCentavos: serverAmount }),
       onCancelled: () => dispatch({ type: 'PAYMENT_CANCELLED' }),
     });
     flow.current = f;

@@ -9,6 +9,8 @@ export interface FakeConfig {
   cancelReturns: 'cancelled' | 'paid';
   /** `createPayment` rejects (the "Payments are unavailable" path). */
   createPaymentFails?: boolean;
+  /** What `createPayment` returns as the amount (the server's price); default: the settings price. */
+  serverPriceCentavos?: number;
   /** The next N `cancelPayment` calls reject (the "Checking your payment…" retry path). */
   cancelThrows?: number;
   /** The next N `uploadPhoto` calls reject. */
@@ -106,7 +108,7 @@ export class FakeKioskApi implements KioskApi {
     if (this.config().createPaymentFails) throw new Error('Fake createPayment failure');
     const paymentId = `fake-pay-${this.nextPayment++}`;
     this.payments.set(paymentId, { createdAt: this.now(), status: 'pending' });
-    return { paymentId, qrImageDataUrl: FAKE_QR, amountCentavos: settings.priceCentavos };
+    return { paymentId, qrImageDataUrl: FAKE_QR, amountCentavos: this.config().serverPriceCentavos ?? settings.priceCentavos };
   }
 
   async getPaymentStatus(paymentId: string): Promise<PaymentStatus> {

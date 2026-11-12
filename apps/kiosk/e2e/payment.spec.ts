@@ -8,6 +8,7 @@ const shotsDir = join(appDir, 'test-results', 'theme');
 
 interface PbDebug {
   createPaymentCalls(): number;
+  syncedSessions(): { id: string; amountCentavos: number; status: string }[];
 }
 
 let userData: string;
@@ -126,3 +127,23 @@ for (const vp of [
     await page.screenshot({ path: join(shotsDir, `payment-amount-${vp.name}.png`) });
   });
 }
+
+test('the synced session row carries the server amount, not the stale local price', async () => {
+  test.setTimeout(90_000);
+  const page = await launch({
+    payAfterMs: 1500,
+    serverPriceCentavos: 17500,
+    queueIntervalMs: 1000,
+    settings: { freeMode: false, countdownSeconds: 3, shotsPerSession: 2, priceCentavos: 15000 },
+  });
+  await page.getByRole('button', { name: 'Tap to start' }).click();
+  await expect(page.getByText('₱175.00', { exact: true })).toBeVisible();
+  await expect(captureScreen(page)).toBeVisible({ timeout: 5_000 });
+  await expect(page.getByRole('heading', { name: 'Pick a look' })).toBeVisible({ timeout: 20_000 });
+  await page.getByRole('button', { name: 'Print', exact: true }).click();
+  await expect
+    .poll(() => page.evaluate(() => (globalThis as unknown as { __pbDebug: PbDebug }).__pbDebug.syncedSessions()), {
+      timeout: 30_000,
+    })
+    .toMatchObject([{ status: 'completed', amountCentavos: 17500 }]);
+});

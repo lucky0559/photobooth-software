@@ -4,7 +4,7 @@ import type { KioskApi } from '../api/kiosk-api';
 export const POLL_MS = 2_000;
 /** Delay between `cancelPayment` retries after it throws or times out. */
 export const CANCEL_RETRY_MS = 2_000;
-/** Retries after the first failed `cancelPayment` before giving up (the late webhook then flags the row). */
+/** Retries after the first failed `cancelPayment` before giving up (the row stays pending on the server; if the guest later pays it lands as `paid` and never `completed`, which the admin dashboard lists as "paid and not completed after 10 min", the refund signal). */
 export const CANCEL_RETRIES = 15;
 /** How long "Payments are unavailable" stays up before returning to attract. */
 export const UNAVAILABLE_MS = 10_000;
@@ -26,7 +26,8 @@ export interface PaymentFlowOptions {
   deadline: number;
   onReady(payment: CreatedPayment): void;
   onStatus(status: PaymentFlowStatus): void;
-  onPaid(): void;
+  /** `amountCentavos` is the server's amount when createPayment resolved, else undefined (keep the local one). */
+  onPaid(amountCentavos?: number): void;
   onCancelled(): void;
 }
 
@@ -48,6 +49,7 @@ export function startPaymentFlow(o: PaymentFlowOptions): PaymentFlow {
   let finished = false;
   let cancelling = false;
   let paymentId: string | null = null;
+  let serverAmount: number | undefined;
   /** Creation still pending (or timed out) when the flow ended: cancel the intent if it ever arrives. */
   let voidOnArrival = false;
 
@@ -90,7 +92,7 @@ export function startPaymentFlow(o: PaymentFlowOptions): PaymentFlow {
   const finish = (outcome: 'paid' | 'cancelled'): void => {
     if (finished) return;
     stop();
-    if (outcome === 'paid') o.onPaid();
+    if (outcome === 'paid') o.onPaid(serverAmount);
     else o.onCancelled();
   };
 
@@ -128,7 +130,7 @@ export function startPaymentFlow(o: PaymentFlowOptions): PaymentFlow {
       if (finished) return;
       console.warn(`cancelPayment failed (attempt ${retry + 1})`, err);
       if (retry >= CANCEL_RETRIES) {
-        // Server row stays awaiting_payment; a late webhook marks it paid_after_cancel for staff.
+        // The row stays pending on the server; a later payment lands as `paid`, never `completed` (refund signal).
         finish('cancelled');
         return;
       }
@@ -172,6 +174,7 @@ export function startPaymentFlow(o: PaymentFlowOptions): PaymentFlow {
       if (finished) return; // Disposed (StrictMode re-run, remount): the next flow picks the payment up.
       clear(createTimeout);
       paymentId = p.paymentId;
+      serverAmount = p.amountCentavos;
       o.onReady(p);
       poll(p.paymentId);
     },

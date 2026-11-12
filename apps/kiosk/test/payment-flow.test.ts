@@ -31,6 +31,7 @@ function setup(opts: { startedAt?: number; payment?: Promise<CreatedPayment> } =
   const { api, setStatus } = fakeApi();
   const events: string[] = [];
   const statuses: PaymentFlowStatus[] = [];
+  const paidAmounts: (number | undefined)[] = [];
   const onReady = vi.fn();
   const flow = startPaymentFlow({
     api,
@@ -38,10 +39,13 @@ function setup(opts: { startedAt?: number; payment?: Promise<CreatedPayment> } =
     deadline: (opts.startedAt ?? T0) + TIMEOUT,
     onReady,
     onStatus: (s) => statuses.push(s),
-    onPaid: () => events.push('paid'),
+    onPaid: (amount) => {
+      events.push('paid');
+      paidAmounts.push(amount);
+    },
     onCancelled: () => events.push('cancelled'),
   });
-  return { api, setStatus, events, statuses, onReady, flow };
+  return { api, setStatus, events, statuses, onReady, flow, paidAmounts };
 }
 
 beforeEach(() => {
@@ -57,6 +61,19 @@ afterEach(() => {
 });
 
 describe('startPaymentFlow', () => {
+  it('onPaid receives the server amount from the created payment', async () => {
+    const { paidAmounts, setStatus } = setup({ payment: Promise.resolve({ ...created, amountCentavos: 17500 }) });
+    await vi.advanceTimersByTimeAsync(0);
+    setStatus('paid');
+    await vi.advanceTimersByTimeAsync(POLL_MS);
+    expect(paidAmounts).toEqual([17500]);
+  });
+  it('never-resolved createPayment: cancel leaves without onPaid', async () => {
+    const { events, flow } = setup({ payment: new Promise<CreatedPayment>(() => undefined) });
+    flow.cancel();
+    expect(events).toEqual(['cancelled']);
+  });
+
   it('shows the payment, then polls every 2 s until paid', async () => {
     const { api, setStatus, events, onReady } = setup();
     await vi.advanceTimersByTimeAsync(0);
