@@ -180,6 +180,63 @@ describe('createJsonStore', () => {
     expect(consoleError).toHaveBeenCalledWith('json-store: config.json could not be read; using defaults for this run without saving');
   });
 
+  describe('self-heal while write-blocked', () => {
+    function lockable() {
+      const lock = { on: true, reads: 0 };
+      const readFileSync = ((p: string, enc: BufferEncoding) => {
+        lock.reads += 1;
+        if (lock.on && p === file) throw errnoError('EBUSY');
+        return realFs.readFileSync(p, enc);
+      }) as typeof realFs.readFileSync;
+      return { lock, fs: { readFileSync } };
+    }
+
+    it('the next update re-reads the file once it is readable and applies the pending update to it', () => {
+      writeFileSync(file, JSON.stringify({ ...DEFAULTS, a: 8, list: [1] }));
+      const { lock, fs } = lockable();
+      const onRecovered = vi.fn();
+      const store = createJsonStore<Doc>(file, DEFAULTS, { sleep: () => {}, fs, onRecovered });
+      expect(store.writeBlocked).toBe(true);
+      lock.on = false;
+      expect(store.update((d) => ({ ...d, list: [...d.list, 2] }))).toEqual({ ...DEFAULTS, a: 8, list: [1, 2] });
+      expect(store.writeBlocked).toBe(false);
+      expect(onRecovered).toHaveBeenCalledTimes(1);
+      expect(JSON.parse(readFileSync(file, 'utf8'))).toEqual({ ...DEFAULTS, a: 8, list: [1, 2] });
+    });
+
+    it('stays blocked (update throws, file untouched) while the file is still unreadable', () => {
+      writeFileSync(file, JSON.stringify({ ...DEFAULTS, a: 8 }));
+      const { lock, fs } = lockable();
+      const store = createJsonStore<Doc>(file, DEFAULTS, { sleep: () => {}, fs });
+      const readsAfterLoad = lock.reads;
+      expect(() => store.update((d) => ({ ...d, a: 2 }))).toThrow('not saving');
+      expect(lock.reads).toBeGreaterThan(readsAfterLoad);
+      expect(store.recheck()).toBe(false);
+      expect(store.writeBlocked).toBe(true);
+      expect(JSON.parse(readFileSync(file, 'utf8')).a).toBe(8);
+      // Logged once, not on every retry.
+      expect(consoleError.mock.calls.filter(([m]) => String(m).includes('could not be read'))).toHaveLength(1);
+    });
+
+    it('recheck() heals and normalizes per entry (dropped entries counted)', () => {
+      writeFileSync(file, JSON.stringify({ ...DEFAULTS, a: 3, list: [1, 'x'] }));
+      const { lock, fs } = lockable();
+      const store = createJsonStore<Doc>(file, DEFAULTS, { sleep: () => {}, fs, normalize: normalizeDoc, now: () => 42 });
+      expect(store.get()).toEqual(DEFAULTS);
+      lock.on = false;
+      expect(store.recheck()).toBe(true);
+      expect(store.get()).toEqual({ ...DEFAULTS, a: 3, list: [1] });
+      expect(store.droppedEntries).toBe(1);
+      expect(files('config.json.dropped-')).toEqual(['config.json.dropped-42']);
+      expect(consoleError).toHaveBeenCalledWith('json-store: config.json is usable again');
+    });
+
+    it('recheck() is a no-op when the store is not blocked', () => {
+      const store = createJsonStore<Doc>(file, DEFAULTS);
+      expect(store.recheck()).toBe(true);
+    });
+  });
+
   it('copies the bytes to the backup name when the rename fails', () => {
     writeFileSync(file, 'not json');
     const store = createJsonStore<Doc>(file, DEFAULTS, {

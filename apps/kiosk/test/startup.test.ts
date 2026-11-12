@@ -42,8 +42,45 @@ describe('queue.json + config.json on startup', () => {
     const copies = readdirSync(dir).filter((f) => f.startsWith('queue.json.dropped-'));
     expect(copies).toHaveLength(1);
     expect(readFileSync(join(dir, copies[0]), 'utf8')).toBe(original);
-    // Persisted: still flagged after a restart.
-    expect(open().config.get().uploadsDropped).toBe(true);
+    // A queue write rewrites queue.json without the bad entry ...
+    queue.update((q) => q);
+    expect(JSON.parse(readFileSync(join(dir, 'queue.json'), 'utf8')).jobs).toHaveLength(1);
+    // ... and the flag still survives the restart (it lives in config.json, not in the queue file).
+    const reopened = open();
+    expect(reopened.queue.droppedEntries).toBe(0);
+    expect(reopened.config.get().uploadsDropped).toBe(true);
+  });
+
+  it('a queue.json from the previous build loads with everything kept (print error cut, paths re-derived)', () => {
+    const DONE_SID = '2b3f6a52-6c1e-4d5e-9a0b-1c2d3e4f5a6b';
+    const row = {
+      id: SID,
+      downloadToken: 'AbCdEfGhIjKlMnOpQrSt_-',
+      templateId: 'fake-strip',
+      amountCentavos: 15000,
+      status: 'completed',
+      printError: 'p'.repeat(800),
+      createdAt: '2026-01-01T00:00:00.000Z',
+      completedAt: '2026-01-01T00:01:00.000Z',
+    };
+    const old = {
+      jobs: [
+        { id: J1, kind: 'upsert_session', row, attempts: 4, nextAttemptAt: 123, lastError: 'offline' },
+        { ...uploadJob, id: '22222222-2222-4222-8222-222222222222', filePath: `C:\\Users\\booth\\AppData\\photos\\${SID}.jpg` },
+      ],
+      completedUploads: [{ sessionId: DONE_SID, filePath: `C:\\Users\\booth\\AppData\\photos\\${DONE_SID}.jpg`, completedAt: 99 }],
+    };
+    writeFileSync(join(dir, 'queue.json'), JSON.stringify(old));
+    const { queue, config } = open();
+    expect(queue.droppedEntries).toBe(0);
+    const [upsert, upload] = queue.get().jobs;
+    expect(upsert).toMatchObject({ id: J1, attempts: 4, nextAttemptAt: 123, lastError: 'offline' });
+    const printError = (upsert as { row: { printError: string } }).row.printError;
+    expect(printError.length).toBeLessThanOrEqual(500);
+    expect(printError.endsWith('…')).toBe(true);
+    expect(upload).toMatchObject({ kind: 'upload_photo', sessionId: SID, filePath: join(photosDir(), `${SID}.jpg`), attempts: 1 });
+    expect(queue.get().completedUploads).toEqual([{ sessionId: DONE_SID, filePath: join(photosDir(), `${DONE_SID}.jpg`), completedAt: 99 }]);
+    expect(config.get().uploadsDropped).toBe(false);
   });
 
   it('unparsable queue.json still takes the corrupt-backup path (no dropped notice)', () => {

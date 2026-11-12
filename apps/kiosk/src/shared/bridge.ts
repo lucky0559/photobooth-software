@@ -31,16 +31,29 @@ export const DEFAULT_LOCAL_CONFIG: LocalConfig = {
 
 /**
  * What the renderer sees of LocalConfig: never the PIN hash, only whether a PIN is set.
- * `settingsUnreadable`: `config.json` could not be read this run; nothing is saved until a restart.
+ * Live main-process health (never persisted):
+ * - `settingsUnreadable`: `config.json` could not be read; settings changes are not saved.
+ * - `queueUnavailable`: `queue.json` could not be read, so no session can be queued: the kiosk is out of
+ *   service until the file becomes readable (the main process retries) or the kiosk restarts.
  */
-export type ConfigView = Omit<LocalConfig, 'pinHash'> & { pinSet: boolean; settingsUnreadable: boolean };
+export type ConfigView = Omit<LocalConfig, 'pinHash'> & StoreHealth & { pinSet: boolean };
+
+export interface StoreHealth {
+  settingsUnreadable: boolean;
+  queueUnavailable: boolean;
+}
 
 /** The LocalConfig keys the renderer may write through `setConfig`. */
 export type ConfigPatch = Partial<Pick<LocalConfig, 'printerName' | 'cameraDeviceId' | 'cachedSettings' | 'cachedTemplate'>>;
 
-export function toConfigView(config: LocalConfig, settingsUnreadable = false): ConfigView {
+export function toConfigView(config: LocalConfig, health: Partial<StoreHealth> = {}): ConfigView {
   const { pinHash, ...rest } = config;
-  return { ...rest, pinSet: pinHash !== null, settingsUnreadable };
+  return {
+    ...rest,
+    pinSet: pinHash !== null,
+    settingsUnreadable: health.settingsUnreadable ?? false,
+    queueUnavailable: health.queueUnavailable ?? false,
+  };
 }
 
 /** The only API the renderer can reach in the main process. Exposed as `window.kiosk`. */

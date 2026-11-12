@@ -81,6 +81,8 @@ export function startQueueRunner(
   api: QueueDeps['api'],
   bridge: Pick<KioskBridge, 'queueList' | 'queueApply' | 'readPhoto'>,
   intervalMs = QUEUE_INTERVAL_MS,
+  /** Called after every `queueList` call (resolved or rejected), e.g. to re-check queue health. */
+  onListed?: () => void,
 ): QueueRunner {
   let running = false;
   let again = false;
@@ -95,7 +97,7 @@ export function startQueueRunner(
     try {
       do {
         again = false;
-        const jobs = await bridge.queueList();
+        const jobs = await bridge.queueList().finally(() => onListed?.());
         // A runner stopped mid-run neither starts processing nor applies its (possibly stale) result.
         if (stopped || jobs.length === 0) continue;
         const result = await processQueue(jobs, { api, readPhoto: (p) => bridge.readPhoto(p), now: Date.now() });

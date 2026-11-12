@@ -1,14 +1,15 @@
 import { ipcMain } from 'electron';
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { IPC, TEMPLATE_ID_PATTERN, toConfigView, type LocalConfig } from '../shared/bridge';
+import { IPC, TEMPLATE_ID_PATTERN, type LocalConfig } from '../shared/bridge';
 import type { TestSwitches } from '../shared/test-switches';
-import { validateConfigPatch, validateOverlayPng } from './config-validation';
+import { validateOverlayPng } from './config-validation';
 import type { JsonStore } from './json-store';
 import { photoPath, resolvePhotoReadPath, validateJpeg } from './photos';
 import { createPinService } from './pin-service';
-import { addJobs, applyResult, validateQueueJobs, validateQueueResult, type QueueFile } from './queue-store';
+import type { QueueFile } from './queue-store';
 import { listPrinters, printSheet, validatePrintRequest } from './print';
+import { createStoreApi } from './store-api';
 
 function overlayFile(overlayDir: string, templateId: unknown): string {
   if (typeof templateId !== 'string' || !TEMPLATE_ID_PATTERN.test(templateId)) {
@@ -32,14 +33,9 @@ export function registerIpc(
   mkdirSync(overlayDir, { recursive: true });
   mkdirSync(photosDir, { recursive: true });
 
-  // The renderer never receives the PIN hash; it only learns whether a PIN is set.
-  const view = (c: LocalConfig) => toConfigView(c, store.writeBlocked);
-  ipcMain.handle(IPC.getConfig, () => view(store.get()));
-
-  ipcMain.handle(IPC.setConfig, (_e, patch: unknown) => {
-    const valid = validateConfigPatch(patch);
-    return view(store.update((c) => ({ ...c, ...valid })));
-  });
+  const stores = createStoreApi(store, queue, photosDir);
+  ipcMain.handle(IPC.getConfig, () => stores.getConfig());
+  ipcMain.handle(IPC.setConfig, (_e, patch: unknown) => stores.setConfig(patch));
 
   const pins = createPinService(store);
   ipcMain.handle(IPC.setPin, (_e, pin: unknown, currentPin: unknown) => pins.set(pin, currentPin));
@@ -78,17 +74,9 @@ export function registerIpc(
 
   ipcMain.handle(IPC.readPhoto, (_e, path: unknown) => toArrayBuffer(readFileSync(resolvePhotoReadPath(photosDir, path))));
 
-  ipcMain.handle(IPC.queueAdd, (_e, jobs: unknown) => {
-    const valid = validateQueueJobs(jobs, photosDir);
-    queue.update((q) => addJobs(q, valid));
-  });
-
-  ipcMain.handle(IPC.queueList, () => queue.get().jobs);
-
-  ipcMain.handle(IPC.queueApply, (_e, result: unknown) => {
-    const valid = validateQueueResult(result);
-    queue.update((q) => applyResult(q, valid, Date.now()));
-  });
+  ipcMain.handle(IPC.queueAdd, (_e, jobs: unknown) => stores.queueAdd(jobs));
+  ipcMain.handle(IPC.queueList, () => stores.queueList());
+  ipcMain.handle(IPC.queueApply, (_e, result: unknown) => stores.queueApply(result));
 
   ipcMain.handle(IPC.readOverlay, (_e, templateId: unknown) => {
     try {

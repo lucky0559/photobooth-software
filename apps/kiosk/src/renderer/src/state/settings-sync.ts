@@ -54,8 +54,17 @@ export interface AttractStatus {
   priceLabel: string;
 }
 
-export function attractStatus(i: { settings: KioskSettings; template: Template | null; online: boolean }): AttractStatus {
+export const OUT_OF_SERVICE_BANNER = 'Out of service. Please call staff.';
+
+export function attractStatus(i: {
+  settings: KioskSettings;
+  template: Template | null;
+  online: boolean;
+  /** The saved-sessions file is unreadable: a new session could not be queued, so none may start (free mode too). */
+  queueUnavailable?: boolean;
+}): AttractStatus {
   const priceLabel = i.settings.freeMode ? 'Free today!' : formatPeso(i.settings.priceCentavos);
+  if (i.queueUnavailable) return { canStart: false, banner: OUT_OF_SERVICE_BANNER, priceLabel };
   if (i.template === null) return { canStart: false, banner: 'Setup needed: no active template', priceLabel };
   if (!i.online && !i.settings.freeMode) return { canStart: false, banner: 'Offline — payments unavailable', priceLabel };
   return { canStart: true, banner: null, priceLabel };

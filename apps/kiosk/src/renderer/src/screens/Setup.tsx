@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { PIN_PATTERN } from '../../../shared/bridge';
+import { saveSetup } from '../setup/save-setup';
 
 /** Kiosk Supabase account sign-in. `null` (fake API) skips the step. */
 export interface SetupAuth {
@@ -40,6 +41,8 @@ export function Setup({
   onDone: () => void;
 }) {
   const [step, setStep] = useState<Step>('pin');
+  // The PIN main currently holds: starts as the unlocking PIN, becomes the new one once main accepted it.
+  const [savedPin, setSavedPin] = useState<string | null>(currentPin);
   const [pin, setPin] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -110,8 +113,11 @@ export function Setup({
       return;
     }
     void run(async () => {
-      await window.kiosk.setPin(pin, currentPin ?? undefined);
-      await window.kiosk.setConfig({ cameraDeviceId: cameraId, printerName: printerName || null });
+      await saveSetup(
+        window.kiosk,
+        { pin, currentPin: savedPin, cameraDeviceId: cameraId, printerName: printerName || null },
+        setSavedPin,
+      );
       onDone();
     });
   };

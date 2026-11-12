@@ -17,3 +17,13 @@ export function applyStartupNotices(config: JsonStore<LocalConfig>, queue: Pick<
     console.error('Saving startup notices failed', err);
   }
 }
+
+/** After `queue.json` became readable mid-run: flag dropped entries for the Setup notice. Never throws. */
+export function flagDroppedUploads(config: JsonStore<LocalConfig>, queue: Pick<JsonStore<QueueFile>, 'droppedEntries'>): void {
+  if (queue.droppedEntries === 0 || config.get().uploadsDropped) return;
+  try {
+    config.update((c) => ({ ...c, uploadsDropped: true }));
+  } catch (err) {
+    console.error('Saving startup notices failed', err);
+  }
+}

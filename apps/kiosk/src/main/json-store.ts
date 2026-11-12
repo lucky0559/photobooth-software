@@ -14,6 +14,11 @@ export interface JsonStore<T> {
    * for this run and nothing is ever written over it.
    */
   readonly writeBlocked: boolean;
+  /**
+   * While write-blocked, re-attempts the read (and normalize/backup); returns true once usable. `update`
+   * does this itself. No-op (true) when not blocked.
+   */
+  recheck(): boolean;
 }
 
 /** Result of a load-time normalizer: the value to use, and how many invalid entries it dropped. */
@@ -39,6 +44,8 @@ export interface JsonStoreOptions<T> {
   sleep?: (ms: number) => void;
   /** File system overrides (tests). */
   fs?: Partial<StoreFs>;
+  /** Called after a write-blocked store became usable again (not on the initial load). */
+  onRecovered?: () => void;
 }
 
 /** Corrupt-file backups (and dropped-entry copies) kept per store; older ones are deleted. */
@@ -73,7 +80,8 @@ type Loaded<T> =
  * new file, never an empty one. A leftover `.tmp` is never read.
  *
  * Loading: a missing file means defaults. A read error is retried once after 50 ms; if it persists the
- * store uses defaults for this run and refuses to write (the original is never overwritten). A file that
+ * store uses defaults and refuses to write (the original is never overwritten) until a later `update` or
+ * `recheck` finds the file readable again (self-heal: it then loads it and carries on). A file that
  * cannot be parsed or normalized is backed up to `<file>.corrupt-<ms>` (renamed, or copied if the rename
  * fails) and defaults are used; if no backup can be made, writes are refused. Newest 3 backups are kept.
  */
@@ -153,40 +161,60 @@ export function createJsonStore<T extends object>(filePath: string, defaults: T,
     return ok;
   };
 
-  const loaded = load();
   let current = defaults;
   let recovered = false;
   let dropped = 0;
   let blocked = false;
-  switch (loaded.kind) {
-    case 'ok':
-      current = loaded.value;
-      dropped = loaded.dropped;
-      if (dropped > 0) {
-        console.error(`json-store: ${name}: dropped ${dropped} invalid entries (original kept as a .dropped copy)`);
-        try {
-          fs.writeFileSync(`${filePath}.dropped-${now()}`, loaded.text);
-        } catch {
-          console.error(`json-store: ${name}: could not keep a copy of the dropped entries`);
+
+  /** (Re)loads the file into the store state. Logs only when the state changes (no log spam while retrying). */
+  const loadInto = (): void => {
+    const wasBlocked = blocked;
+    const loaded = load();
+    blocked = false;
+    switch (loaded.kind) {
+      case 'ok':
+        current = loaded.value;
+        dropped = loaded.dropped;
+        if (dropped > 0) {
+          console.error(`json-store: ${name}: dropped ${dropped} invalid entries (original kept as a .dropped copy)`);
+          try {
+            fs.writeFileSync(`${filePath}.dropped-${now()}`, loaded.text);
+          } catch {
+            console.error(`json-store: ${name}: could not keep a copy of the dropped entries`);
+          }
+          prune(`${name}.dropped-`);
         }
-        prune(`${name}.dropped-`);
-      }
-      break;
-    case 'read-error':
-      console.error(`json-store: ${name} could not be read; using defaults for this run without saving`);
-      blocked = true;
-      break;
-    case 'corrupt':
-      console.error(`json-store: ${name} is unreadable or invalid; moved it aside and reset to defaults`);
-      if (backUpCorrupt(loaded.text)) recovered = true;
-      else {
-        console.error(`json-store: could not back up ${name}; using defaults for this run without saving`);
+        break;
+      case 'read-error':
+        if (!wasBlocked) console.error(`json-store: ${name} could not be read; using defaults for this run without saving`);
+        current = defaults;
         blocked = true;
-      }
-      break;
-    case 'missing':
-      break;
-  }
+        break;
+      case 'corrupt':
+        if (!wasBlocked) console.error(`json-store: ${name} is unreadable or invalid; moved it aside and reset to defaults`);
+        current = defaults;
+        if (backUpCorrupt(loaded.text)) recovered = true;
+        else {
+          if (!wasBlocked) console.error(`json-store: could not back up ${name}; using defaults for this run without saving`);
+          blocked = true;
+        }
+        break;
+      case 'missing':
+        current = defaults;
+        break;
+    }
+    if (wasBlocked && !blocked) console.error(`json-store: ${name} is usable again`);
+  };
+  loadInto();
+
+  /** While write-blocked, tries the read (and normalize/backup) again; returns true once the store is usable. */
+  const recheck = (): boolean => {
+    if (!blocked) return true;
+    loadInto();
+    if (blocked) return false;
+    options.onRecovered?.();
+    return true;
+  };
 
   const writeDurably = (path: string, data: string): void => {
     const fd = fs.openSync(path, 'w');
@@ -214,7 +242,8 @@ export function createJsonStore<T extends object>(filePath: string, defaults: T,
   return {
     get: () => current,
     update(fn) {
-      if (blocked) throw new Error(`${name} could not be read; not saving so it is not overwritten. Restart the kiosk.`);
+      // Self-heal: a lock that outlasted the startup retry may be gone by now.
+      if (!recheck()) throw new Error(`${name} could not be read; not saving so it is not overwritten. Restart the kiosk.`);
       const next = fn(current);
       const tmp = `${filePath}.tmp`;
       writeDurably(tmp, JSON.stringify(next, null, 2));
@@ -223,8 +252,15 @@ export function createJsonStore<T extends object>(filePath: string, defaults: T,
       current = next;
       return next;
     },
-    recoveredFromCorruption: recovered,
-    droppedEntries: dropped,
-    writeBlocked: blocked,
+    recheck,
+    get recoveredFromCorruption() {
+      return recovered;
+    },
+    get droppedEntries() {
+      return dropped;
+    },
+    get writeBlocked() {
+      return blocked;
+    },
   };
 }

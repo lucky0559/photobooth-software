@@ -55,6 +55,25 @@ describe('startQueueRunner', () => {
     await new Promise((r) => setTimeout(r, 10));
     expect(bridge.queueList).toHaveBeenCalledTimes(1);
   });
+
+  it('calls onListed after every queueList, even when it rejects (queue health re-check)', async () => {
+    const onListed = vi.fn();
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const bridge = {
+      queueList: vi.fn<() => Promise<QueueJob[]>>().mockResolvedValueOnce([]).mockRejectedValueOnce(new Error('ipc down')),
+      queueApply: vi.fn(async () => {}),
+      readPhoto,
+    };
+    const runner = startQueueRunner(fakeApi(), bridge, 60_000, onListed);
+    await new Promise((r) => setTimeout(r, 10));
+    expect(onListed).toHaveBeenCalledTimes(1);
+    runner.kick();
+    await new Promise((r) => setTimeout(r, 10));
+    expect(onListed).toHaveBeenCalledTimes(2);
+    expect(consoleError).toHaveBeenCalledWith('Sync queue run failed', expect.any(Error));
+    runner.stop();
+    consoleError.mockRestore();
+  });
 });
 
 describe('nextAttemptAt', () => {

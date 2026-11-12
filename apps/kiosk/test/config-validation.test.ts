@@ -146,10 +146,23 @@ describe('validateOverlayPng', () => {
 describe('toConfigView (what getConfig sends to the renderer)', () => {
   it('drops pinHash and reports only whether a PIN is set', () => {
     const view = toConfigView({ ...DEFAULT_LOCAL_CONFIG, pinHash: 'scrypt$salt$hash', printerName: 'P' });
-    expect(view).toEqual({ ...DEFAULT_LOCAL_CONFIG, pinHash: undefined, printerName: 'P', pinSet: true, settingsUnreadable: false });
+    expect(view).toEqual({
+      ...DEFAULT_LOCAL_CONFIG,
+      pinHash: undefined,
+      printerName: 'P',
+      pinSet: true,
+      settingsUnreadable: false,
+      queueUnavailable: false,
+    });
     expect('pinHash' in view).toBe(false);
     expect(JSON.stringify(view)).not.toContain('scrypt');
     expect(toConfigView(DEFAULT_LOCAL_CONFIG).pinSet).toBe(false);
-    expect(toConfigView(DEFAULT_LOCAL_CONFIG, true).settingsUnreadable).toBe(true);
+  });
+
+  it('carries live store health, which is not part of LocalConfig (never persisted)', () => {
+    const view = toConfigView(DEFAULT_LOCAL_CONFIG, { settingsUnreadable: true, queueUnavailable: true });
+    expect(view).toMatchObject({ settingsUnreadable: true, queueUnavailable: true });
+    expect('queueUnavailable' in DEFAULT_LOCAL_CONFIG).toBe(false);
+    expect(normalizeLocalConfig({ ...DEFAULT_LOCAL_CONFIG, queueUnavailable: true })?.value).not.toHaveProperty('queueUnavailable');
   });
 });

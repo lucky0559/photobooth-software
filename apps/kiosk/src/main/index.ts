@@ -10,7 +10,7 @@ import { createJsonStore, type JsonStore } from './json-store';
 import { findOrphanPhotos, listPhotoFiles, resolvePhotoReadPath, selectPhotosToDelete } from './photos';
 import { EMPTY_QUEUE, normalizeQueueFile, type QueueFile } from './queue-store';
 import { createNavigationGuard, isAllowedPermissionCheck, isAllowedPermissionRequest } from './security';
-import { applyStartupNotices } from './startup';
+import { applyStartupNotices, flagDroppedUploads } from './startup';
 
 /** Deletes local photos whose upload finished 7+ days ago (run once on app start). Never throws. */
 function deleteExpiredPhotos(queue: JsonStore<QueueFile>, photosDir: string, now: number): void {
@@ -117,8 +117,10 @@ void app.whenReady().then(() => {
   const store = createJsonStore<LocalConfig>(join(userData, 'config.json'), DEFAULT_LOCAL_CONFIG, {
     normalize: normalizeLocalConfig,
   });
-  const queue = createJsonStore<QueueFile>(join(userData, 'queue.json'), EMPTY_QUEUE, {
+  const queue: JsonStore<QueueFile> = createJsonStore<QueueFile>(join(userData, 'queue.json'), EMPTY_QUEUE, {
     normalize: normalizeQueueFile(photosDir),
+    // An unreadable queue.json heals on a later read; flag any entries dropped then, too.
+    onRecovered: () => flagDroppedUploads(store, queue),
   });
   // Damaged settings or dropped upload jobs: Setup shows staff a notice until it is completed.
   applyStartupNotices(store, queue);

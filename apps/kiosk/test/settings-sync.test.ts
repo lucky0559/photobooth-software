@@ -130,4 +130,13 @@ describe('attractStatus', () => {
     expect(s.canStart).toBe(false);
     expect(s.banner).toBe('Setup needed: no active template');
   });
+
+  it('is out of service while the saved-sessions file is unreadable, free mode included', () => {
+    for (const settings of [ONLINE, { ...ONLINE, freeMode: true }]) {
+      const s = attractStatus({ settings, template: TEMPLATE, online: true, queueUnavailable: true });
+      expect(s.canStart).toBe(false);
+      expect(s.banner).toBe('Out of service. Please call staff.');
+    }
+    expect(attractStatus({ settings: ONLINE, template: TEMPLATE, online: true, queueUnavailable: false }).canStart).toBe(true);
+  });
 });

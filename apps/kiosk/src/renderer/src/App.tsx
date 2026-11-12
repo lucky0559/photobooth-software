@@ -8,7 +8,7 @@ import { Payment } from './screens/Payment';
 import { PinPrompt } from './screens/PinPrompt';
 import { Review } from './screens/Review';
 import { Setup, type SetupAuth } from './screens/Setup';
-import { setupNotices } from './screens/setup-notices';
+import { setupNotices, type NoticeFlags } from './screens/setup-notices';
 import { registerTap } from './setup/secret-tap';
 import { attractStatus } from './state/settings-sync';
 import { useKiosk } from './state/useKiosk';
@@ -21,17 +21,26 @@ type Screen = 'loading' | 'setup' | 'pin' | 'kiosk';
 export function App({ api, auth, configWarnings = [] }: { api: KioskApi; auth: SetupAuth | null; configWarnings?: string[] }) {
   const [screen, setScreen] = useState<Screen>('loading');
   const [cameraId, setCameraId] = useState<string | null>(null);
-  const [notices, setNotices] = useState<string[]>([]);
+  const [noticeFlags, setNoticeFlags] = useState<Omit<NoticeFlags, 'queueUnavailable'> | null>(null);
   // The PIN that unlocked Setup through the secret corner; main needs it to change the PIN. Dropped on exit.
   const [unlockPin, setUnlockPin] = useState<string | null>(null);
+  // The saved-sessions file is unreadable (main keeps retrying): no new session may start.
+  const [queueUnavailable, setQueueUnavailable] = useState(false);
   const taps = useRef<number[]>([]);
   const queue = useRef<QueueRunner | null>(null);
 
   // Offline sync: runs every 10 s and after each enqueue, in every screen (jobs survive restarts in queue.json).
+  // Each queueList also lets main retry an unreadable queue.json, so queue health is re-checked right after.
   useEffect(() => {
     const intervalMs =
       import.meta.env.VITE_FAKE_API === '1' ? (window.__pbFake?.queueIntervalMs ?? QUEUE_INTERVAL_MS) : QUEUE_INTERVAL_MS;
-    const runner = startQueueRunner(api, window.kiosk, intervalMs);
+    const recheckHealth = (): void => {
+      window.kiosk.getConfig().then(
+        (cfg) => setQueueUnavailable(cfg.queueUnavailable),
+        (err: unknown) => console.error('Reading queue health failed', err),
+      );
+    };
+    const runner = startQueueRunner(api, window.kiosk, intervalMs, recheckHealth);
     queue.current = runner;
     return () => {
       runner.stop();
@@ -43,7 +52,8 @@ export function App({ api, auth, configWarnings = [] }: { api: KioskApi; auth: S
   const reload = (): void => {
     void window.kiosk.getConfig().then((cfg) => {
       setCameraId(cfg.cameraDeviceId);
-      setNotices(setupNotices(cfg));
+      setNoticeFlags(cfg);
+      setQueueUnavailable(cfg.queueUnavailable);
       setUnlockPin(null);
       setScreen(cfg.pinSet ? 'kiosk' : 'setup');
     });
@@ -63,7 +73,7 @@ export function App({ api, auth, configWarnings = [] }: { api: KioskApi; auth: S
           auth={auth}
           initialCameraId={cameraId}
           currentPin={unlockPin}
-          notices={notices}
+          notices={noticeFlags ? setupNotices({ ...noticeFlags, queueUnavailable }) : []}
           configWarnings={configWarnings}
           onDone={reload}
         />
@@ -78,7 +88,13 @@ export function App({ api, auth, configWarnings = [] }: { api: KioskApi; auth: S
         />
       )}
       {screen === 'kiosk' && (
-        <KioskFlow api={api} cameraId={cameraId} onSecretTap={onSecretTap} onEnqueued={kickQueue} />
+        <KioskFlow
+          api={api}
+          cameraId={cameraId}
+          queueUnavailable={queueUnavailable}
+          onSecretTap={onSecretTap}
+          onEnqueued={kickQueue}
+        />
       )}
     </>
   );
@@ -88,11 +104,13 @@ export function App({ api, auth, configWarnings = [] }: { api: KioskApi; auth: S
 function KioskFlow({
   api,
   cameraId,
+  queueUnavailable,
   onSecretTap,
   onEnqueued,
 }: {
   api: KioskApi;
   cameraId: string | null;
+  queueUnavailable: boolean;
   onSecretTap: () => void;
   onEnqueued: () => void;
 }) {
@@ -103,7 +121,7 @@ function KioskFlow({
       return (
         <>
           <Attract
-            status={ready ? attractStatus({ settings, template, online }) : null}
+            status={ready ? attractStatus({ settings, template, online, queueUnavailable }) : null}
             onStart={() => dispatch({ type: 'START' })}
           />
           <div className="secret-corner" aria-hidden onPointerDown={onSecretTap} />

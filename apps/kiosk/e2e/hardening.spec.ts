@@ -1,5 +1,5 @@
 import { _electron as electron, expect, test, type ElectronApplication } from '@playwright/test';
-import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { hashPin, verifyPin } from '../src/main/pin';
@@ -18,7 +18,7 @@ test.afterEach(async () => {
   rmSync(userData, { recursive: true, force: true });
 });
 
-function launch(): Promise<ElectronApplication> {
+function launch(fake: object = {}): Promise<ElectronApplication> {
   return electron.launch({
     args: [E2E_MAIN],
     env: {
@@ -26,7 +26,7 @@ function launch(): Promise<ElectronApplication> {
       PB_FAKE_CAMERA: '1',
       PB_FAKE_PRINT: '1',
       PB_USER_DATA: userData,
-      PB_FAKE_CONFIG: JSON.stringify({ settings: { freeMode: true } }),
+      PB_FAKE_CONFIG: JSON.stringify({ settings: { freeMode: true }, ...fake }),
     },
   });
 }
@@ -113,7 +113,7 @@ test('moved userData: queued jobs survive, a malformed one is dropped, and Setup
   for (let i = 0; i < 5; i++) await page.mouse.click(40, 40);
   await page.getByLabel('PIN').fill('2468');
   await page.getByRole('button', { name: 'Unlock' }).click();
-  await expect(page.getByText('Some saved photo uploads could not be restored. Check the photos folder backup.')).toBeVisible();
+  await expect(page.getByText('Some saved photo uploads could not be restored. A copy of the damaged file was kept in the kiosk data folder.')).toBeVisible();
 
   // Change the PIN through Setup (main verifies the PIN Setup was unlocked with).
   await page.getByLabel('Admin PIN').fill('1357');
@@ -125,4 +125,27 @@ test('moved userData: queued jobs survive, a malformed one is dropped, and Setup
   const config = JSON.parse(readFileSync(join(userData, 'config.json'), 'utf8')) as { pinHash: string; uploadsDropped: boolean };
   expect(config.uploadsDropped).toBe(false);
   expect(verifyPin('1357', config.pinHash)).toBe(true);
+});
+
+test('unreadable queue.json: Attract is out of service, then back in service once the file is readable', async () => {
+  writeFileSync(join(userData, 'config.json'), JSON.stringify({ pinHash: 'scrypt$e2e$e2e', cameraDeviceId: null }));
+  const queueFile = join(userData, 'queue.json');
+  writeFileSync(queueFile, JSON.stringify({ jobs: [], completedUploads: [] }));
+  chmodSync(queueFile, 0o000); // a lock the kiosk cannot read through (like an antivirus/backup lock)
+  try {
+    app = await launch({ queueIntervalMs: 500 });
+    const page = await app.firstWindow();
+    const start = page.getByRole('button', { name: 'Tap to start' });
+    await expect(page.getByRole('status')).toHaveText('Out of service. Please call staff.');
+    await expect(start).toBeDisabled();
+    // The file was never overwritten.
+    chmodSync(queueFile, 0o644);
+    expect(readFileSync(queueFile, 'utf8')).toBe(JSON.stringify({ jobs: [], completedUploads: [] }));
+
+    // Readable again: the next queueList heals the store and Attract re-enables start.
+    await expect(start).toBeEnabled({ timeout: 10_000 });
+    await expect(page.getByText('Out of service. Please call staff.')).toHaveCount(0);
+  } finally {
+    chmodSync(queueFile, 0o644);
+  }
 });
