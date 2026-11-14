@@ -53,6 +53,18 @@ body,
   color: #fff;
 }
 
+/* Native select arrows hug the box edge: draw our own chevron with room on the right. */
+.setup select {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 80px;
+  text-overflow: ellipsis;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='18' viewBox='0 0 28 18'%3E%3Cpath d='M3 3l11 11L25 3' fill='none' stroke='%23fff' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 28px center;
+  background-size: 28px 18px;
+}
+
 .setup button {
   background: #fff;
   color: #000;
@@ -223,7 +235,9 @@ body,
   position: absolute;
   inset: 0;
   display: grid;
-  place-items: center;
+  /* Corner badge: keeps the middle of the preview clear so the countdown never covers the guests. */
+  place-items: end end;
+  padding: 3vmin;
   pointer-events: none;
 }
 
@@ -233,8 +247,10 @@ body,
 
 .countdown__iris {
   display: block;
-  width: min(52vmin, 80%);
-  opacity: 0.4;
+  align-self: end;
+  justify-self: end;
+  width: 20vmin;
+  opacity: 0.55;
   transition: rotate 400ms ease-out;
 }
 
@@ -242,9 +258,16 @@ body,
 .countdown__num {
   position: relative;
   z-index: 1;
-  display: inline-block;
+  /* Same box as the iris so the digit sits exactly in the middle of it. */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  align-self: end;
+  justify-self: end;
+  width: 20vmin;
+  height: 20vmin;
   font-family: var(--font-display);
-  font-size: 30vmin;
+  font-size: 13vmin;
   line-height: 1;
   color: var(--lime);
   -webkit-text-stroke: 0.06em var(--ink);

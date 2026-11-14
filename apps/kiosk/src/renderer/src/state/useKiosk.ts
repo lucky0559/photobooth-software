@@ -12,7 +12,8 @@ import { shotStore } from '../camera/shot-store';
 import { syncSettings, type SyncApi, type SyncBridge, type SyncResult } from './settings-sync';
 
 const TICK_MS = 500;
-const SYNC_MS = 60_000;
+// Short, so a change saved in the admin panel reaches the kiosk before the next guest taps Start.
+const SYNC_MS = 5_000;
 
 /** Any `KioskEvent`; for `START` the hook fills in `sessionId` and `now` itself. */
 export type KioskInput = Exclude<KioskEvent, { type: 'START' }> | { type: 'START' };
