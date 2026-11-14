@@ -8,12 +8,16 @@ describe('layouts', () => {
   });
 
   it('strip slots', () => {
-    expect(slotsFor('strip_2x6', 1)).toEqual([{ x: 40, y: 40, w: 520, h: 1500 }]);
-    expect(slotsFor('strip_2x6', 2).map((s) => s.y)).toEqual([40, 800]);
-    expect(slotsFor('strip_2x6', 3)).toEqual([
-      { x: 40, y: 40, w: 520, h: 486 },
-      { x: 40, y: 546, w: 520, h: 486 },
-      { x: 40, y: 1052, w: 520, h: 486 },
+    // fixed 520x360 slots (the 4-shot size), centred vertically in the 1500-high photo area
+    expect(slotsFor('strip_2x6', 1)).toEqual([{ x: 40, y: 610, w: 520, h: 360 }]);
+    expect(slotsFor('strip_2x6', 2).map((s) => [s.y, s.h])).toEqual([
+      [420, 360],
+      [800, 360],
+    ]);
+    expect(slotsFor('strip_2x6', 3).map((s) => [s.y, s.h])).toEqual([
+      [230, 360],
+      [610, 360],
+      [990, 360],
     ]);
     expect(slotsFor('strip_2x6', 4).map((s) => [s.y, s.h])).toEqual([
       [40, 360],

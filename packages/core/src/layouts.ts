@@ -24,8 +24,20 @@ function stacked(canvas: { w: number; h: number; footer: number }, n: number): R
   }));
 }
 
+/**
+ * Strip slots keep one fixed size (the 4-shot size, close to the camera's landscape frame) whatever the shot count, so
+ * 1-3 shots are not stretched tall and cropped. They are centred vertically in the photo area above the footer.
+ */
+function stripSlots(n: number): Rect[] {
+  const usable = STRIP.h - PADDING - STRIP.footer;
+  const slotH = Math.floor((usable - GAP * 3) / 4);
+  const total = slotH * n + GAP * (n - 1);
+  const top = PADDING + Math.floor((usable - total) / 2);
+  return Array.from({ length: n }, (_, i) => ({ x: PADDING, y: top + i * (slotH + GAP), w: STRIP.w - PADDING * 2, h: slotH }));
+}
+
 export function slotsFor(layout: LayoutId, shots: ShotCount): Rect[] {
-  if (layout === 'strip_2x6') return stacked(STRIP, shots);
+  if (layout === 'strip_2x6') return stripSlots(shots);
   if (shots < 4) return stacked(PRINT_4R, shots);
   const usable = PRINT_4R.h - PADDING - PRINT_4R.footer;
   const w = (PRINT_4R.w - PADDING * 2 - GAP) / 2;
