@@ -20,6 +20,8 @@ const csp = [
 ].join('; ');
 
 const nextConfig: NextConfig = {
+  // The e2e suite builds into its own folder so it never overwrites a running `pnpm dev` (both used `.next`).
+  distDir: process.env.NEXT_DIST_DIR || '.next',
   poweredByHeader: false,
   // @pb/core ships raw TypeScript with explicit `.ts` relative imports.
   transpilePackages: ['@pb/core'],

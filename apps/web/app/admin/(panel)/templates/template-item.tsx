@@ -1,7 +1,8 @@
 'use client';
 
-import { useActionState } from 'react';
+import { useActionState, useState } from 'react';
 import type { LayoutId, Result } from '@pb/core';
+import { Spinner } from '@/components/spinner';
 import { archiveTemplate, setActiveTemplate } from './actions';
 import { LAYOUT_LABELS } from './layouts';
 
@@ -22,6 +23,7 @@ export function TemplateItem({
     (_prev, op) => (op === 'activate' ? setActiveTemplate(id) : archiveTemplate(id)),
     null,
   );
+  const [op, setOp] = useState<'activate' | 'archive' | null>(null); // which button was pressed, for its spinner
   const error = state && !state.ok ? Object.values(state.errors)[0] : null;
   const errorId = `template-${id}-error`;
 
@@ -43,12 +45,32 @@ export function TemplateItem({
           <p className="hint">Kiosks print with this one. To archive it, set another template active first.</p>
         ) : (
           <form className="actions" aria-describedby={error ? errorId : undefined}>
-            <button type="submit" className="btn" disabled={pending} formAction={() => run('activate')}>
-              Set active
+            <button
+              type="submit"
+              className="btn"
+              disabled={pending}
+              aria-busy={pending && op === 'activate'}
+              formAction={() => {
+                setOp('activate');
+                run('activate');
+              }}
+            >
+              {pending && op === 'activate' && <Spinner />}
+              {pending && op === 'activate' ? 'Setting active…' : 'Set active'}
             </button>
             {/* The server also refuses to archive the active template (a stale page may still show this button). */}
-            <button type="submit" className="btn" disabled={pending} formAction={() => run('archive')}>
-              Archive
+            <button
+              type="submit"
+              className="btn"
+              disabled={pending}
+              aria-busy={pending && op === 'archive'}
+              formAction={() => {
+                setOp('archive');
+                run('archive');
+              }}
+            >
+              {pending && op === 'archive' && <Spinner />}
+              {pending && op === 'archive' ? 'Archiving…' : 'Archive'}
             </button>
           </form>
         )}

@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import Link from 'next/link';
+import { SubmitButton } from '@/components/submit-button';
 import { requireAdmin } from '@/lib/auth';
 import { signOut } from '../login/actions';
 import { NavLinks } from './nav-links';
@@ -17,9 +18,9 @@ export default async function PanelLayout({ children }: { children: ReactNode })
             <NavLinks />
           </nav>
           <form action={signOut}>
-            <button type="submit" className="btn">
+            <SubmitButton className="btn" pendingText="Signing out…">
               Sign out
-            </button>
+            </SubmitButton>
           </form>
         </div>
       </header>

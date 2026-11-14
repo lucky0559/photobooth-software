@@ -621,11 +621,68 @@ select[aria-invalid='true'] {
   opacity: 0.85;
 }
 
+/* ---- Hover feedback ---- */
+
+.btn:hover:not(:disabled),
+.nav a:hover,
+.brand:hover {
+  opacity: 0.75;
+}
+
+/* ---- Loading spinner (inside a busy button, and the page-level loading screen) ---- */
+
+.spinner {
+  display: inline-block;
+  flex: none;
+  width: 1em;
+  height: 1em;
+  margin-right: 0.55em;
+  border: 0.16em solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.page-loading {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 48px 0;
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+
+.page-loading .spinner {
+  width: 28px;
+  height: 28px;
+  margin-right: 0;
+  border-width: 4px;
+}
+
 @media (prefers-reduced-motion: no-preference) {
   .btn {
-    transition: transform 80ms ease;
+    transition:
+      transform 80ms ease,
+      opacity 150ms ease;
+  }
+  .nav a,
+  .brand {
+    transition: opacity 150ms ease;
   }
   .btn:active:not(:disabled) {
     transform: translate(1px, 1px);
+  }
+}
+
+/* Slower, not stopped: a still ring would not read as "working". */
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation-duration: 2s;
   }
 }

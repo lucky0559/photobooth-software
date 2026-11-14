@@ -23,6 +23,8 @@ export default defineConfig({
   webServer: {
     // Production build, so the e2e run also covers `next build`, the CSP and the body-size limits.
     command: `pnpm run build && pnpm exec next start --port ${PORT} --hostname 127.0.0.1`,
+    // Build and serve from `.next-e2e`, not `.next`, so a running dev server on :3000 is left alone.
+    env: { NEXT_DIST_DIR: '.next-e2e' },
     url: `http://127.0.0.1:${PORT}/admin/login`,
     // PW_REUSE_SERVER=1 reuses an already running `next start --port 3100` (debugging only).
     reuseExistingServer: process.env.PW_REUSE_SERVER === '1',

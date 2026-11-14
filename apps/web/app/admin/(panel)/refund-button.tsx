@@ -2,6 +2,7 @@
 
 import { useActionState, useState } from 'react';
 import type { Result } from '@pb/core';
+import { Spinner } from '@/components/spinner';
 import { markRefunded, undoRefund } from './refund-actions';
 
 /**
@@ -21,15 +22,17 @@ export function RefundButton({ paymentId, mode }: { paymentId: string; mode: 'ma
     <div className="refund-action">
       {mode === 'undo' ? (
         <form aria-describedby={error ? errorId : undefined}>
-          <button type="submit" className="btn" disabled={pending} formAction={() => run()}>
-            Undo
+          <button type="submit" className="btn" disabled={pending} aria-busy={pending} formAction={() => run()}>
+            {pending && <Spinner />}
+            {pending ? 'Undoing…' : 'Undo'}
           </button>
         </form>
       ) : confirming ? (
         <form className="actions" aria-describedby={error ? errorId : undefined}>
           <span className="refund-confirm-text">Refunded this payment in PayMongo?</span>
-          <button type="submit" className="btn btn-primary" disabled={pending} formAction={() => run()}>
-            Yes, mark refunded
+          <button type="submit" className="btn btn-primary" disabled={pending} aria-busy={pending} formAction={() => run()}>
+            {pending && <Spinner />}
+            {pending ? 'Saving…' : 'Yes, mark refunded'}
           </button>
           <button type="button" className="btn" disabled={pending} onClick={() => setConfirming(false)}>
             Cancel

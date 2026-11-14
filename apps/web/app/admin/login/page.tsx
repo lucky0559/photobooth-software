@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation';
+import { SubmitButton } from '@/components/submit-button';
 import { createClient } from '@/lib/supabase/server';
 import { getAdminUser } from '@/lib/supabase/roles';
 import { safeAdminPath } from '@/lib/safe-next';
@@ -58,9 +59,7 @@ export default async function LoginPage({
               aria-describedby={message ? 'login-error' : undefined}
             />
           </div>
-          <button type="submit" className="btn btn-primary">
-            Sign in
-          </button>
+          <SubmitButton pendingText="Signing in…">Sign in</SubmitButton>
         </form>
       </div>
     </main>

@@ -1,7 +1,8 @@
 'use client';
 
-import { useActionState, useState, type ReactNode } from 'react';
+import { startTransition, useActionState, useState, type FormEvent, type ReactNode } from 'react';
 import type { KioskSettings, Result } from '@pb/core';
+import { Spinner } from '@/components/spinner';
 import { centavosToPesoInput } from '@/lib/settings-row';
 import { saveSettings } from './actions';
 
@@ -68,6 +69,13 @@ export function SettingsForm({ initial }: { initial: KioskSettings }) {
     null,
   );
   const errors = state && !state.ok ? state.errors : {};
+  // Submit through onSubmit, not `<form action>`: React resets a form after its action finishes, which put back the
+  // old values of every field whose saved value equalled what the user had chosen (so it never re-rendered).
+  const onSubmit = (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const data = new FormData(e.currentTarget);
+    startTransition(() => formAction(data));
+  };
   const set = (key: keyof FormValues) => (e: { target: { value: string } }) =>
     setValues((v) => ({ ...v, [key]: e.target.value }));
   const select = (id: keyof FormValues, label: string, options: number[], errorKey: string) => (
@@ -92,7 +100,7 @@ export function SettingsForm({ initial }: { initial: KioskSettings }) {
   );
 
   return (
-    <form action={formAction} className="form" noValidate>
+    <form onSubmit={onSubmit} className="form" noValidate>
       {errors._ && (
         <p className="alert" role="alert">
           {errors._}
@@ -164,7 +172,8 @@ export function SettingsForm({ initial }: { initial: KioskSettings }) {
       </div>
 
       <div>
-        <button type="submit" className="btn btn-primary" disabled={pending}>
+        <button type="submit" className="btn btn-primary" disabled={pending} aria-busy={pending}>
+          {pending && <Spinner />}
           {pending ? 'Saving…' : 'Save settings'}
         </button>
       </div>

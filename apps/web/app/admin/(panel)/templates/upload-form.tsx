@@ -1,7 +1,8 @@
 'use client';
 
-import { useActionState, useState } from 'react';
+import { startTransition, useActionState, useRef, useState, type FormEvent } from 'react';
 import type { LayoutId, Result, Template } from '@pb/core';
+import { Spinner } from '@/components/spinner';
 import { effectiveUploadLimit, formatMb } from '@/lib/upload-limit';
 import { uploadTemplate } from './actions';
 import { LAYOUT_LABELS } from './layouts';
@@ -12,6 +13,7 @@ const UPLOAD_LIMIT = effectiveUploadLimit(process.env.NEXT_PUBLIC_TEMPLATE_UPLOA
 const LIMIT_TEXT = formatMb(UPLOAD_LIMIT);
 
 export function UploadForm() {
+  const formRef = useRef<HTMLFormElement>(null);
   const [name, setName] = useState('');
   const [layout, setLayout] = useState<LayoutId>('strip_2x6');
   const [state, formAction, pending] = useActionState<Result<Template> | null, FormData>(async (_prev, formData) => {
@@ -22,7 +24,12 @@ export function UploadForm() {
     }
     try {
       const result = await uploadTemplate(formData);
-      if (result.ok) setName('');
+      if (result.ok) {
+        // Clear the file picker and name only after a success; an error keeps what the user entered.
+        formRef.current?.reset();
+        setName('');
+        setLayout('strip_2x6');
+      }
       return result;
     } catch {
       // Rejected request (413 from the host, network drop, …): a fixed message instead of an error page.
@@ -33,12 +40,19 @@ export function UploadForm() {
     }
   }, null);
 
+  // onSubmit instead of `<form action>`: React would reset the whole form (file, layout) after every attempt.
+  const onSubmit = (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const data = new FormData(e.currentTarget);
+    startTransition(() => formAction(data));
+  };
+
   const errors = state && !state.ok ? state.errors : {};
   const fileErrors = FILE_ERROR_KEYS.flatMap((k) => (errors[k] ? [{ key: k, text: errors[k] }] : []));
   const fileDescribedBy = ['file-hint', ...fileErrors.map((e) => `file-error-${e.key}`)].join(' ');
 
   return (
-    <form action={formAction} className="form" noValidate>
+    <form ref={formRef} onSubmit={onSubmit} className="form" noValidate>
       {errors._ && (
         <p className="alert" role="alert">
           {errors._}
@@ -105,7 +119,8 @@ export function UploadForm() {
         ))}
       </div>
       <div>
-        <button type="submit" className="btn btn-primary" disabled={pending}>
+        <button type="submit" className="btn btn-primary" disabled={pending} aria-busy={pending}>
+          {pending && <Spinner />}
           {pending ? 'Uploading…' : 'Upload template'}
         </button>
       </div>
