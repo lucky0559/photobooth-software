@@ -17,3 +17,6 @@ supabase/.temp/
 supabase/functions/_shared/core/
 .superpowers/
 .DS_Store
+
+# electron-builder resources (icons) are source files, not build output
+!apps/kiosk/build/
