@@ -1,7 +1,7 @@
 // Fails the production build (and packaging, via electron-builder's beforePack hook) if `out/` (the bundle that gets
 // packaged) is missing, incomplete, has source maps, or contains any test-only hook.
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const FORBIDDEN = ['__pbDebug', '__pbFake', '__pbPrintCalls', 'PB_FAKE', 'PB_USER_DATA'];
@@ -53,10 +53,10 @@ export function assertPackageableBundle(dir = OUT_DIR) {
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   try {
-    assertPackageableBundle();
+    assertPackageableBundle(process.argv[2] ? resolve(process.argv[2]) : undefined);
   } catch (err) {
     console.error(err instanceof Error ? err.message : err);
     process.exit(1);
   }
-  console.log('check-prod-bundle: out/ is complete and has no test-only hooks');
+  console.log(`check-prod-bundle: ${process.argv[2] ?? 'out'} is complete and has no test-only hooks`);
 }

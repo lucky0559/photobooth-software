@@ -10,6 +10,8 @@
     "build": "cross-env VITE_FAKE_API= electron-vite build && node scripts/check-prod-bundle.mjs",
     "package": "pnpm build && electron-builder --dir",
     "build:win": "pnpm build && electron-builder --win",
+    "dev:trial": "cross-env VITE_TRIAL=1 electron-vite dev",
+    "build:trial": "cross-env VITE_TRIAL=1 VITE_FAKE_API= electron-vite build && node scripts/check-prod-bundle.mjs out-trial && electron-builder --win --config electron-builder.trial.yml",
     "build:e2e": "cross-env VITE_FAKE_API=1 VITE_WEB_BASE_URL=http://localhost:3000 electron-vite build",
     "e2e": "pnpm run build:e2e && playwright test",
     "test": "vitest run",

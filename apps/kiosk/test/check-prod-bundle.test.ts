@@ -41,6 +41,16 @@ describe('findTestHooks (production bundle guard)', () => {
     ]);
   });
 
+  it('checkPackageableBundle: reports a test-only hook and a missing renderer/index.html', () => {
+    writeFileSync(join(dir, 'main', 'index.js'), 'ok');
+    mkdirSync(join(dir, 'preload'));
+    writeFileSync(join(dir, 'preload', 'index.js'), '');
+    writeFileSync(join(dir, 'renderer', 'assets', 'a.js'), 'window.__pbFake = 1');
+    const problems = checkPackageableBundle(dir);
+    expect(problems).toContain('missing renderer/index.html');
+    expect(problems).toContain(`test-only hook ${join('renderer', 'assets', 'a.js')}: __pbFake`);
+  });
+
   it('flags every test-only marker', () => {
     writeFileSync(join(dir, 'main', 'index.js'), 'process.env.PB_FAKE_PRINT');
     writeFileSync(join(dir, 'renderer', 'assets', 'index.js'), 'window.__pbDebug = {}; window.__pbFake;');
