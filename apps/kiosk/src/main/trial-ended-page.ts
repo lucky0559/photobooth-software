@@ -13,6 +13,7 @@ const HTML = `<!doctype html>
 </head>
 <body>
 <h1>Trial ended</h1>
+<p>Thank you for trying Photobooth.</p>
 <p>Please contact your vendor to continue.</p>
 </body>
 </html>`;

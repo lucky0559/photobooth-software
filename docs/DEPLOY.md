@@ -295,8 +295,11 @@ For a demo or trial copy that needs no Supabase or PayMongo, see E.9 (Trial buil
    - The real camera and printer are used.
    - **3-day limit.** The first launch starts a 72-hour clock, stored in `trial.json` in the data folder. When it runs
      out (checked at launch and every minute while the kiosk is open) the window switches to a static page: "Trial
-     ended. Please contact your vendor to continue." The same happens if the PC clock is moved back by more than
-     10 minutes, or if `trial.json` cannot be read or written. Reinstalling does not reset it, because the data
+     ended. Thank you for trying Photobooth. Please contact your vendor to continue." The same happens if the PC
+     clock is moved back by more than 10 minutes, or if `trial.json` is unreadable or corrupt, or cannot be written
+     at the first launch. Set and check the PC clock (and time zone) before the first launch: a clock moved back more
+     than 10 minutes later ends the trial, and a clock that was far in the past at first launch and is later corrected
+     forwards makes the trial expire immediately. Reinstalling does not reset it, because the data
      folder survives an uninstall. To grant a fresh trial, delete `%APPDATA%\Photobooth Kiosk Trial\trial.json` (or
      the whole folder) and relaunch. Known weakness: a determined user can do the same. To test it quickly, edit
      `firstLaunchAt` in `trial.json` to 4 days ago (milliseconds since 1970) and relaunch.

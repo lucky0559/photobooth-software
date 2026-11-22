@@ -13,6 +13,7 @@ describe('trialEndedUrl', () => {
 
   it('says the trial ended and who to contact', () => {
     expect(html).toContain('Trial ended');
+    expect(html).toContain('Thank you for trying Photobooth.');
     expect(html).toContain('Please contact your vendor to continue.');
   });
 
