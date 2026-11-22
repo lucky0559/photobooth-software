@@ -51,17 +51,22 @@ export function normalizeHeldStripFile(photosDir: string): (v: unknown) => Norma
 export function createHeldStripApi(store: JsonStore<HeldStripFile>, photosDir: string) {
   return {
     get(): HeldStrip | null {
+      // A store that was write-blocked at startup may have recovered; re-read before answering.
+      store.recheck();
       return store.get().held;
     },
     hold(h: unknown): void {
       const valid = validateHeldStrip(h, photosDir);
-      const current = store.get().held;
-      if (current?.sessionId === valid.sessionId) return;
-      if (current) throw new Error('A strip is already held');
-      store.update(() => ({ held: valid }));
+      // Checked inside update so they run against the freshly re-read file; a throw happens before any write.
+      store.update((cur) => {
+        if (cur.held?.sessionId === valid.sessionId) return cur;
+        if (cur.held) throw new Error('A strip is already held');
+        return { held: valid };
+      });
     },
     /** Read-and-clear. Synchronous in the main process, so atomic; a failed write throws before anything is handed out. */
     claim(): HeldStrip | null {
+      store.recheck();
       const held = store.get().held;
       if (!held) return null;
       store.update(() => ({ held: null }));

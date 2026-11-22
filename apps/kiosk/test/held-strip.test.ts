@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
@@ -103,6 +103,7 @@ describe('held strip store', () => {
   it('moves aside a tampered file and never returns its strip', () => {
     writeFileSync(file(), JSON.stringify({ held: { ...rec(), filePath: join(dir, 'elsewhere.jpg') } }));
     expect(open().get()).toBeNull();
+    expect(readdirSync(dir).some((f) => f.startsWith('held-strip.json.corrupt-'))).toBe(true);
   });
 
   it('hands nothing out when the clear could not be saved', () => {
@@ -113,6 +114,48 @@ describe('held strip store', () => {
       },
     });
     expect(() => failing.claim()).toThrow();
+    expect(failing.get()).toEqual(rec());
+    expect(() => failing.claim()).toThrow();
     expect(open().get()).toEqual(rec());
+  });
+
+  describe('after a startup read failure', () => {
+    const other = () => ({ sessionId: SID2, filePath: join(photosDir(), SID2 + '.jpg'), heldAt: 2000 });
+    const flaky = () => {
+      const state = { locked: true };
+      const api = open({
+        readFileSync: ((...args: Parameters<typeof readFileSync>) => {
+          if (state.locked) throw Object.assign(new Error('EBUSY'), { code: 'EBUSY' });
+          return readFileSync(...args);
+        }) as typeof readFileSync,
+      });
+      return { api, state };
+    };
+
+    it('does not overwrite the held strip once the file is readable again', () => {
+      open().hold(rec());
+      const { api, state } = flaky();
+      expect(api.get()).toBeNull();
+      state.locked = false;
+      expect(() => api.hold(other())).toThrow('A strip is already held');
+      expect(onDisk()).toEqual({ held: rec() });
+    });
+
+    it('claims the held strip once the file is readable again', () => {
+      open().hold(rec());
+      const { api, state } = flaky();
+      expect(api.claim()).toBeNull();
+      state.locked = false;
+      expect(api.claim()).toEqual(rec());
+      expect(onDisk()).toEqual({ held: null });
+    });
+
+    it('reports the held strip from get() once the file is readable again', () => {
+      open().hold(rec());
+      const { api, state } = flaky();
+      expect(api.get()).toBeNull();
+      state.locked = false;
+      expect(api.get()).toEqual(rec());
+    });
   });
 });
