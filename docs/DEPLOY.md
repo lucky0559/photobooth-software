@@ -192,6 +192,8 @@ and installing on Windows.
 No app icon is configured yet: the installer and the exe use Electron's default icon (later: add
 `apps/kiosk/build/icon.ico` and `win.icon` in `electron-builder.yml`).
 
+For a demo or trial copy that needs no Supabase or PayMongo, see E.9 (Trial build).
+
 1. Install Node 22 LTS and Git for Windows.
 2. **Pre-flight: pnpm 9.** In a new terminal:
 
@@ -272,6 +274,25 @@ No app icon is configured yet: the installer and the exe use Electron's default 
 8. Windows auto-start: press `Win+R`, type `shell:startup`, Enter, and copy the "Photobooth Kiosk" desktop shortcut
    into that folder (this is the Startup folder of the signed-in Windows user, which is what the kiosk needs). With
    the single-instance lock, a second launch only brings the running kiosk to the front.
+9. **Trial build (optional).** A separate installer for demos and testers. It runs against an in-memory demo backend,
+   so it needs no `.env`, no Supabase and no PayMongo:
+
+   ```powershell
+   pnpm --filter kiosk build:trial
+   ```
+
+   Output: `apps\kiosk\dist-trial\Photobooth-Trial-Setup-<version>.exe`. `pnpm --filter kiosk dev:trial` runs the same
+   flavour in development.
+   - It installs beside a real kiosk: product name `Photobooth Kiosk Trial`, appId `com.photobooth.kiosk.trial`, own
+     data folder `%APPDATA%\Photobooth Kiosk Trial`. The Setup PIN and the 5-tap Setup reopening (E.7) work as in the real kiosk.
+   - Settings are fixed at the core defaults (PHP 150.00, 4 shots, 5 s countdown, free mode off). The demo payment QR
+     confirms itself after 5 seconds. Nothing is charged.
+   - The template footer reads "TRIAL", and the download QR encodes the text `Trial build: the real kiosk shows your
+     photo download link here.` instead of a link.
+   - The real camera and printer are used. There is no expiry.
+   - Unsigned, so SmartScreen warns as in step 6. No auto-update.
+   - It was cross-built on macOS and has not been installed or run on Windows yet. Check it on a Windows PC before
+     handing it out.
 
 ## F. Windows kiosk hardening checklist
 
