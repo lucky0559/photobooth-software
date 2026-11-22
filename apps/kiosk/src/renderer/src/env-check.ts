@@ -5,6 +5,7 @@ export interface KioskEnv {
   VITE_SUPABASE_ANON_KEY?: string;
   VITE_WEB_BASE_URL?: string;
   VITE_FAKE_API?: string;
+  VITE_TRIAL?: string;
 }
 
 /**
@@ -17,6 +18,7 @@ export type EnvCheck = { ok: true; warnings: string[] } | { ok: false; missing: 
 const isHttpUrl = (v: string | undefined): boolean => /^https?:\/\/[^/\s]+/i.test(v?.trim() ?? '');
 
 export function checkEnv(env: KioskEnv): EnvCheck {
+  if (env.VITE_TRIAL === '1') return { ok: true, warnings: [] };
   const webBaseOk = downloadUrl(env.VITE_WEB_BASE_URL, 'x') !== null;
   if (env.VITE_FAKE_API === '1') return { ok: true, warnings: webBaseOk ? [] : ['VITE_WEB_BASE_URL'] };
   const missing: string[] = [];

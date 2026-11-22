@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App';
+import { createDemoKioskApi } from './api/demo-api';
 import { createFakeKioskApi, FakeKioskApi } from './api/fake-api';
 import type { KioskApi } from './api/kiosk-api';
 import { SupabaseKioskApi } from './api/supabase-api';
@@ -25,6 +26,7 @@ function createApi(): { api: KioskApi; auth: SetupAuth | null } {
     const fake = createFakeKioskApi();
     return { api: fake, auth: fake };
   }
+  if (import.meta.env.VITE_TRIAL === '1') return { api: createDemoKioskApi(), auth: null };
   // checkEnv has already verified both are set.
   const url = import.meta.env.VITE_SUPABASE_URL as string;
   const key = import.meta.env.VITE_SUPABASE_ANON_KEY as string;

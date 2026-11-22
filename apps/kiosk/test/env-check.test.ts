@@ -8,6 +8,10 @@ const GOOD = {
 };
 
 describe('checkEnv', () => {
+  it('is ok in the trial build with nothing else set', () => {
+    expect(checkEnv({ VITE_TRIAL: '1' })).toEqual({ ok: true, warnings: [] });
+  });
+
   it('is ok with everything set', () => {
     expect(checkEnv(GOOD)).toEqual({ ok: true, warnings: [] });
   });

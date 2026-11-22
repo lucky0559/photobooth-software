@@ -11,7 +11,7 @@ import { FlashBolt } from '../theme/decor/FlashBolt';
 import { Sparkle } from '../theme/decor/Sparkle';
 import { Sprocket } from '../theme/decor/Sprocket';
 import { useRemainingMs } from '../theme/time';
-import { downloadUrl } from './download-url';
+import { deliveryQrPayload } from './download-url';
 
 let warnedBaseUrl = false;
 
@@ -31,7 +31,7 @@ export function Delivery({
 
   useEffect(() => {
     if (!downloadToken) return;
-    const url = downloadUrl(import.meta.env.VITE_WEB_BASE_URL, downloadToken);
+    const url = deliveryQrPayload(import.meta.env.VITE_TRIAL === '1', import.meta.env.VITE_WEB_BASE_URL, downloadToken);
     if (url === null) {
       if (!warnedBaseUrl) console.error('VITE_WEB_BASE_URL must be an absolute http(s) URL; the download QR is disabled');
       warnedBaseUrl = true;
