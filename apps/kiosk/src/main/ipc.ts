@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { IPC, TEMPLATE_ID_PATTERN, type LocalConfig } from '../shared/bridge';
 import type { TestSwitches } from '../shared/test-switches';
 import { validateOverlayPng } from './config-validation';
+import { createHeldStripApi, type HeldStripFile } from './held-strip';
 import type { JsonStore } from './json-store';
 import { photoPath, resolvePhotoReadPath, validateJpeg } from './photos';
 import { createPinService } from './pin-service';
@@ -28,6 +29,7 @@ export function registerIpc(
   overlayDir: string,
   photosDir: string,
   queue: JsonStore<QueueFile>,
+  heldStrips: JsonStore<HeldStripFile>,
   switches: TestSwitches,
 ): void {
   mkdirSync(overlayDir, { recursive: true });
@@ -77,6 +79,11 @@ export function registerIpc(
   ipcMain.handle(IPC.queueAdd, (_e, jobs: unknown) => stores.queueAdd(jobs));
   ipcMain.handle(IPC.queueList, () => stores.queueList());
   ipcMain.handle(IPC.queueApply, (_e, result: unknown) => stores.queueApply(result));
+
+  const held = createHeldStripApi(heldStrips, photosDir);
+  ipcMain.handle(IPC.getHeldStrip, () => held.get());
+  ipcMain.handle(IPC.holdStrip, (_e, h: unknown) => held.hold(h));
+  ipcMain.handle(IPC.claimHeldStrip, () => held.claim());
 
   ipcMain.handle(IPC.readOverlay, (_e, templateId: unknown) => {
     try {

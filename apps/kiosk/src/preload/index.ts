@@ -19,6 +19,9 @@ const bridge: KioskBridge = {
   queueAdd: (jobs) => ipcRenderer.invoke(IPC.queueAdd, jobs),
   queueList: () => ipcRenderer.invoke(IPC.queueList),
   queueApply: (result) => ipcRenderer.invoke(IPC.queueApply, result),
+  getHeldStrip: () => ipcRenderer.invoke(IPC.getHeldStrip),
+  holdStrip: (h) => ipcRenderer.invoke(IPC.holdStrip, h),
+  claimHeldStrip: () => ipcRenderer.invoke(IPC.claimHeldStrip),
 };
 
 contextBridge.exposeInMainWorld('kiosk', bridge);

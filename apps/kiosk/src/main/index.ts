@@ -5,6 +5,7 @@ import { pathToFileURL } from 'node:url';
 import { DEFAULT_LOCAL_CONFIG, type LocalConfig } from '../shared/bridge';
 import { NO_TEST_SWITCHES, testSwitches, UNPACKAGED_ARG } from '../shared/test-switches';
 import { normalizeLocalConfig } from './config-validation';
+import { EMPTY_HELD_STRIP, HELD_STRIP_FILE, normalizeHeldStripFile, type HeldStripFile } from './held-strip';
 import { registerIpc } from './ipc';
 import { createJsonStore, type JsonStore } from './json-store';
 import { findOrphanPhotos, listPhotoFiles, resolvePhotoReadPath, selectPhotosToDelete } from './photos';
@@ -151,10 +152,13 @@ function startKiosk(): void {
     // An unreadable queue.json heals on a later read; flag any entries dropped then, too.
     onRecovered: () => flagDroppedUploads(store, queue),
   });
+  const heldStrips = createJsonStore<HeldStripFile>(join(userData, HELD_STRIP_FILE), EMPTY_HELD_STRIP, {
+    normalize: normalizeHeldStripFile(photosDir),
+  });
   // Damaged settings or dropped upload jobs: Setup shows staff a notice until it is completed.
   applyStartupNotices(store, queue);
   deleteExpiredPhotos(queue, photosDir, Date.now());
-  registerIpc(store, join(userData, 'overlays'), photosDir, queue, switches);
+  registerIpc(store, join(userData, 'overlays'), photosDir, queue, heldStrips, switches);
 
   let trialEnded = false;
   if (__PB_TRIAL_BUILD__) {

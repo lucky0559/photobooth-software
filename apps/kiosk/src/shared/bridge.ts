@@ -59,6 +59,13 @@ export function toConfigView(config: LocalConfig, health: Partial<StoreHealth> =
   };
 }
 
+/** A finished strip waiting for a second guest to share its 4x6 sheet. */
+export interface HeldStrip {
+  sessionId: string;
+  filePath: string;
+  heldAt: number;
+}
+
 /** The only API the renderer can reach in the main process. Exposed as `window.kiosk`. */
 export interface KioskBridge {
   getConfig(): Promise<ConfigView>;
@@ -86,6 +93,11 @@ export interface KioskBridge {
   queueList(): Promise<QueueJob[]>;
   /** Removes done jobs and records failures (attempts + 1, next attempt time, last error). */
   queueApply(result: QueueResult): Promise<void>;
+  getHeldStrip(): Promise<HeldStrip | null>;
+  /** Rejects while a different session's strip is held; a repeat for the same `sessionId` is a no-op. */
+  holdStrip(h: HeldStrip): Promise<void>;
+  /** Atomic read-and-clear of the held strip. */
+  claimHeldStrip(): Promise<HeldStrip | null>;
 }
 
 export const IPC = {
@@ -103,6 +115,9 @@ export const IPC = {
   queueAdd: 'queue:add',
   queueList: 'queue:list',
   queueApply: 'queue:apply',
+  getHeldStrip: 'held:get',
+  holdStrip: 'held:hold',
+  claimHeldStrip: 'held:claim',
 } as const;
 
 export const PIN_PATTERN = /^\d{4,8}$/;
