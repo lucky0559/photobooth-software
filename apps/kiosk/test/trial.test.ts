@@ -1,3 +1,4 @@
+import * as nodeFs from 'node:fs'
 import { mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -105,7 +106,7 @@ describe('createTrialGuard', () => {
     const g = createTrialGuard(file, {
       now: () => T,
       fs: {
-        writeFileSync: () => {
+        openSync: () => {
           throw new Error('disk full')
         },
       },
@@ -120,10 +121,10 @@ describe('createTrialGuard', () => {
     const g = createTrialGuard(file, {
       now: () => now,
       fs: {
-        writeFileSync: ((...a: Parameters<typeof writeFileSync>) => {
+        renameSync: ((...a: Parameters<typeof nodeFs.renameSync>) => {
           writes++
-          return writeFileSync(...a)
-        }) as typeof writeFileSync,
+          return nodeFs.renameSync(...a)
+        }) as typeof nodeFs.renameSync,
       },
     })
     g.check()
@@ -134,5 +135,122 @@ describe('createTrialGuard', () => {
     now = T + 10_000 + TRIAL_HEARTBEAT_MS + 1_000
     g.check()
     expect(writes).toBe(2)
+  })
+
+  it('fsyncs the temp file before renaming it', () => {
+    const calls: string[] = []
+    const g = createTrialGuard(file, {
+      now: () => T,
+      fs: {
+        fsyncSync: ((fd: number) => {
+          calls.push('fsync')
+          return nodeFs.fsyncSync(fd)
+        }) as typeof nodeFs.fsyncSync,
+        renameSync: ((a: nodeFs.PathLike, b: nodeFs.PathLike) => {
+          calls.push('rename')
+          return nodeFs.renameSync(a, b)
+        }) as typeof nodeFs.renameSync,
+      },
+    })
+    g.check()
+    expect(calls.indexOf('fsync')).toBeGreaterThanOrEqual(0)
+    expect(calls.indexOf('fsync')).toBeLessThan(calls.indexOf('rename'))
+    expect(JSON.parse(readFileSync(file, 'utf8')).firstLaunchAt).toBe(T)
+  })
+
+  it('fails closed on an empty existing file without overwriting it', () => {
+    writeFileSync(file, '')
+    const g = createTrialGuard(file, { now: () => T })
+    expect(g.check()).toEqual({ state: 'ended', reason: 'unavailable' })
+    expect(readFileSync(file, 'utf8')).toBe('')
+  })
+
+  it('does not lock at exactly 10 minutes back, locks 1 ms beyond, and persists the lock', () => {
+    writeFileSync(file, JSON.stringify(fresh()))
+    expect(createTrialGuard(file, { now: () => T - 10 * MIN }).check().state).toBe('active')
+    const g = createTrialGuard(file, { now: () => T - 10 * MIN - 1 })
+    expect(g.check()).toEqual({ state: 'ended', reason: 'clock' })
+    expect(createTrialGuard(file, { now: () => T }).check()).toEqual({ state: 'ended', reason: 'clock' })
+  })
+
+  describe('transient I/O errors after a good first load', () => {
+    const eperm = () => Object.assign(new Error('EPERM'), { code: 'EPERM' })
+
+    it('keeps the trial active when a heartbeat rename fails, and writes on a later tick', () => {
+      let now = T
+      let failRename = false
+      const g = createTrialGuard(file, {
+        now: () => now,
+        fs: {
+          renameSync: ((a: nodeFs.PathLike, b: nodeFs.PathLike) => {
+            if (failRename) throw eperm()
+            return nodeFs.renameSync(a, b)
+          }) as typeof nodeFs.renameSync,
+        },
+      })
+      expect(g.check().state).toBe('active')
+      failRename = true
+      now = T + 2 * MIN
+      expect(g.check().state).toBe('active')
+      expect(JSON.parse(readFileSync(file, 'utf8')).lastSeenAt).toBe(T)
+      failRename = false
+      now = T + 3 * MIN
+      expect(g.check().state).toBe('active')
+      expect(JSON.parse(readFileSync(file, 'utf8')).lastSeenAt).toBe(T + 3 * MIN)
+    })
+
+    it('keeps the trial active when a heartbeat read fails', () => {
+      let failRead = false
+      const g = createTrialGuard(file, {
+        now: () => T,
+        fs: {
+          readFileSync: ((...a: Parameters<typeof nodeFs.readFileSync>) => {
+            if (failRead) throw Object.assign(new Error('EBUSY'), { code: 'EBUSY' })
+            return nodeFs.readFileSync(...a)
+          }) as typeof nodeFs.readFileSync,
+        },
+      })
+      expect(g.check().state).toBe('active')
+      failRead = true
+      expect(g.check().state).toBe('active')
+    })
+
+    it('uses the in-memory state and rewrites the file when it vanishes mid-run', () => {
+      let now = T
+      const g = createTrialGuard(file, { now: () => now })
+      g.check()
+      rmSync(file)
+      now = T + MIN / 2
+      const s = g.check()
+      expect(s.state).toBe('active')
+      if (s.state === 'active') expect(s.remainingMs).toBe(D - MIN / 2)
+      expect(JSON.parse(readFileSync(file, 'utf8')).firstLaunchAt).toBe(T)
+    })
+
+    it('reports time when the expiry cannot be persisted', () => {
+      let now = T
+      let failRename = false
+      const g = createTrialGuard(file, {
+        now: () => now,
+        fs: {
+          renameSync: ((a: nodeFs.PathLike, b: nodeFs.PathLike) => {
+            if (failRename) throw eperm()
+            return nodeFs.renameSync(a, b)
+          }) as typeof nodeFs.renameSync,
+        },
+      })
+      g.check()
+      failRename = true
+      now = T + D
+      expect(g.check()).toEqual({ state: 'ended', reason: 'time' })
+      expect(g.check()).toEqual({ state: 'ended', reason: 'time' })
+    })
+
+    it('still fails closed when the file turns corrupt mid-run', () => {
+      const g = createTrialGuard(file, { now: () => T })
+      g.check()
+      writeFileSync(file, 'garbage')
+      expect(g.check()).toEqual({ state: 'ended', reason: 'unavailable' })
+    })
   })
 })
