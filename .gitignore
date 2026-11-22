@@ -1,6 +1,9 @@
 node_modules/
 dist/
 out/
+out-e2e/
+out-trial/
+dist-trial/
 build/
 .next/
 coverage/
@@ -12,5 +15,10 @@ test-results/
 !.env.example
 supabase/.env.local
 supabase/.temp/
+# Generated copy of packages/core for Edge Functions (scripts/sync-core-to-functions.mjs)
+supabase/functions/_shared/core/
 .superpowers/
 .DS_Store
+
+# electron-builder resources (icons) are source files, not build output
+!apps/kiosk/build/

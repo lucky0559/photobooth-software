@@ -1,0 +1,632 @@
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  height: 100%;
+  background: #000;
+  color: #fff;
+  font-family: system-ui, sans-serif;
+  user-select: none;
+}
+
+.screen {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 32px;
+  padding: 64px;
+}
+
+.screen h1 {
+  font-size: 72px;
+  margin: 0;
+}
+
+.setup form {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  width: min(720px, 100%);
+}
+
+.setup label {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  font-size: 32px;
+}
+
+.setup input,
+.setup select,
+.setup button {
+  font-size: 36px;
+  padding: 20px 24px;
+  border-radius: 16px;
+  border: 2px solid #444;
+  background: #111;
+  color: #fff;
+}
+
+/* Native select arrows hug the box edge: draw our own chevron with room on the right. */
+.setup select {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 80px;
+  text-overflow: ellipsis;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='18' viewBox='0 0 28 18'%3E%3Cpath d='M3 3l11 11L25 3' fill='none' stroke='%23fff' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 28px center;
+  background-size: 28px 18px;
+}
+
+.setup button {
+  background: #fff;
+  color: #000;
+  font-weight: 700;
+  border: none;
+  min-height: 96px;
+}
+
+.setup button.secondary {
+  background: transparent;
+  color: #fff;
+  border: 2px solid #666;
+}
+
+.setup button:disabled {
+  opacity: 0.5;
+}
+
+.error {
+  color: #ff6b6b;
+  font-size: 32px;
+}
+
+/* Staff-only notices (Setup, not-configured screen). */
+.staff-notice {
+  color: #ffd166;
+  font-size: 28px;
+  margin: 0;
+  text-align: center;
+  max-width: 900px;
+}
+
+.staff-detail {
+  color: #aaa;
+  font-size: 22px;
+  margin: 0;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+
+/* ---------- Guest screens (theme components live in theme/theme.css) ---------- */
+
+/* Attract */
+
+/* Admission-ticket price tag: paper with notches cut out of both ends and a perforation line. */
+.price-ticket {
+  margin: 0;
+  padding: 0.3em 1.3em 0.24em;
+  font-family: var(--font-display);
+  font-size: clamp(36px, 5vmin, 88px);
+  line-height: 1.1;
+  color: var(--ink);
+  background:
+    radial-gradient(circle at 0 50%, var(--ink) 0.42em, transparent calc(0.42em + 1px)),
+    radial-gradient(circle at 100% 50%, var(--ink) 0.42em, transparent calc(0.42em + 1px)),
+    var(--paper);
+  border: var(--outline-w) dashed var(--ink);
+  outline: var(--outline-w) solid var(--paper);
+  outline-offset: calc(-3 * var(--outline-w));
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  transform: rotate(2deg);
+}
+
+.status-banner {
+  margin: 0;
+  max-width: min(90vw, 960px);
+  padding: 0.5em 1em;
+  font-size: clamp(28px, 3.2vmin, 48px);
+  font-weight: 700;
+  text-align: center;
+  color: var(--ink);
+  background: var(--tangerine);
+  border: var(--outline-w) solid var(--ink);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+/* Capture */
+
+.stage.capture {
+  justify-content: flex-start;
+}
+
+.shot-label {
+  margin: 0;
+  flex: none;
+  padding: 0.2em 0.9em 0.16em;
+  font-family: var(--font-display);
+  font-size: clamp(32px, 3.8vmin, 64px);
+  line-height: 1.1;
+  color: var(--ink);
+  background: var(--paper);
+  border: var(--outline-w) solid var(--ink);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+/* Viewfinder: the padding leaves room for the crop-mark brackets around the aqua window. */
+.camera-frame {
+  --mark: clamp(36px, 6vmin, 96px);
+  --mark-w: clamp(6px, 0.9vmin, 12px);
+  position: relative;
+  flex: 1 1 0;
+  min-height: 0;
+  width: 100%;
+  display: flex;
+  padding: calc(var(--mark-w) * 2.4);
+}
+
+.camera-frame__mark {
+  position: absolute;
+  width: var(--mark);
+  height: var(--mark);
+  border: 0 solid var(--lime);
+  pointer-events: none;
+}
+
+.camera-frame__mark--tl {
+  top: 0;
+  left: 0;
+  border-top-width: var(--mark-w);
+  border-left-width: var(--mark-w);
+}
+
+.camera-frame__mark--tr {
+  top: 0;
+  right: 0;
+  border-top-width: var(--mark-w);
+  border-right-width: var(--mark-w);
+}
+
+.camera-frame__mark--bl {
+  bottom: 0;
+  left: 0;
+  border-bottom-width: var(--mark-w);
+  border-left-width: var(--mark-w);
+}
+
+.camera-frame__mark--br {
+  bottom: 0;
+  right: 0;
+  border-bottom-width: var(--mark-w);
+  border-right-width: var(--mark-w);
+}
+
+.camera-window {
+  position: relative;
+  flex: 1;
+  overflow: hidden;
+  background: var(--ink-2);
+  border: max(4px, 0.5vmin) solid var(--aqua);
+  border-radius: var(--radius);
+}
+
+/* The preview itself is untouched by the theme: no filters, only the existing mirror transform. */
+.camera-window .preview {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scaleX(-1);
+}
+
+.countdown {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  /* Corner badge: keeps the middle of the preview clear so the countdown never covers the guests. */
+  place-items: end end;
+  padding: 3vmin;
+  pointer-events: none;
+}
+
+.countdown > * {
+  grid-area: 1 / 1;
+}
+
+.countdown__iris {
+  display: block;
+  align-self: end;
+  justify-self: end;
+  width: 20vmin;
+  opacity: 0.55;
+  transition: rotate 400ms ease-out;
+}
+
+/* Positioned so it paints above the iris (whose opacity makes it a later-painted stacking context). */
+.countdown__num {
+  position: relative;
+  z-index: 1;
+  /* Same box as the iris so the digit sits exactly in the middle of it. */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  align-self: end;
+  justify-self: end;
+  width: 20vmin;
+  height: 20vmin;
+  font-family: var(--font-display);
+  font-size: 13vmin;
+  line-height: 1;
+  color: var(--lime);
+  -webkit-text-stroke: 0.06em var(--ink);
+  paint-order: stroke fill;
+  text-shadow: 0.05em 0.05em 0 var(--ink);
+  animation: pb-pop 360ms ease-out;
+}
+
+.flash {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  background: #fff;
+}
+
+.stage.capture-error,
+.stage.output-error {
+  justify-content: center;
+}
+
+.message-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: calc(var(--gap) * 1.4);
+  max-width: min(90vw, 1000px);
+  text-align: center;
+}
+
+.message-card h1 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: clamp(36px, 4.4vmin, 72px);
+  line-height: 1.2;
+}
+
+/* Review: one column in portrait, polaroid beside the controls in landscape. */
+
+.stage.review {
+  display: grid;
+  grid-template:
+    'top' auto
+    'title' auto
+    'card' minmax(0, 1fr)
+    'tray' auto
+    'action' auto
+    / minmax(0, 1fr);
+  justify-items: center;
+  align-items: center;
+}
+
+.review__top {
+  grid-area: top;
+}
+
+.review__title {
+  grid-area: title;
+}
+
+.review__card {
+  grid-area: card;
+  align-self: stretch;
+  display: flex;
+  max-width: 100%;
+  min-height: 0;
+  margin-top: var(--gap);
+}
+
+.review-preview {
+  display: block;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.review__tray {
+  grid-area: tray;
+}
+
+.review__action {
+  grid-area: action;
+}
+
+@media (orientation: landscape) {
+  .stage.review {
+    grid-template:
+      'top top' auto
+      'card title' 1fr
+      'card tray' auto
+      'card action' 1fr
+      / minmax(0, 1fr) minmax(0, 1fr);
+    column-gap: calc(var(--gap) * 2);
+  }
+
+  .review__title {
+    align-self: end;
+  }
+
+  .review__action {
+    align-self: start;
+  }
+}
+
+.filter-tray {
+  display: flex;
+  justify-content: center;
+  gap: var(--gap);
+  max-width: 100%;
+}
+
+/* Film-frame tile: ink film stock with sprocket holes along the top and bottom edges. */
+.filter-tile {
+  --hole: clamp(6px, 0.9vmin, 12px);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.8vmin;
+  width: clamp(160px, 22vmin, 300px);
+  padding: calc(var(--hole) * 2.6) 1.4vmin;
+  font-family: var(--font-body);
+  font-weight: 700;
+  font-size: clamp(26px, 2.8vmin, 44px);
+  line-height: 1.15;
+  color: var(--paper);
+  background:
+    repeating-linear-gradient(90deg, transparent 0 var(--hole), var(--paper) var(--hole) calc(var(--hole) * 2), transparent calc(var(--hole) * 2) calc(var(--hole) * 3))
+      0 calc(var(--hole) * 0.8) / 100% var(--hole) no-repeat,
+    repeating-linear-gradient(90deg, transparent 0 var(--hole), var(--paper) var(--hole) calc(var(--hole) * 2), transparent calc(var(--hole) * 2) calc(var(--hole) * 3))
+      0 calc(100% - var(--hole) * 0.8) / 100% var(--hole) no-repeat,
+    var(--ink);
+  border: var(--outline-w) solid var(--ink);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  cursor: pointer;
+  transition: transform 70ms ease-out, box-shadow 70ms ease-out;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.filter-tile:active {
+  transform: translate(4px, 4px);
+  box-shadow: var(--shadow-pressed);
+}
+
+.filter-tile:focus-visible {
+  outline: 4px solid var(--tangerine);
+  outline-offset: 5px;
+}
+
+.filter-tile[aria-pressed='true'] {
+  box-shadow: 0 0 0 var(--outline-w) var(--lime), 6px 6px 0 var(--outline-w) var(--ink);
+}
+
+.filter-tile__thumb {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1;
+  overflow: hidden;
+  background: var(--ink-2);
+  border: 2px solid var(--paper);
+  border-radius: 4px;
+}
+
+.filter-tile__thumb img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.filter-tile__check {
+  display: none;
+  position: absolute;
+  top: -2vmin;
+  right: -2vmin;
+  width: 6vmin;
+  height: 6vmin;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0.8vmin;
+  background: var(--lime);
+  border: var(--outline-w) solid var(--ink);
+  border-radius: 8px;
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 3.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.filter-tile[aria-pressed='true'] .filter-tile__check {
+  display: block;
+}
+
+/* Payment / delivery shells (Tasks 10–11 fill the QR slot) */
+
+.stage.qr-screen {
+  justify-content: flex-start;
+}
+
+.qr-card {
+  flex: none;
+  margin-top: var(--gap);
+}
+
+/* Task 11's amount, status and Cancel go between the card and this row. */
+.qr-screen > .decor-row {
+  margin-top: auto;
+}
+
+.qr-slot {
+  width: min(52vmin, 32vh);
+  aspect-ratio: 1;
+  border: 3px dashed rgb(15 27 61 / 0.35);
+  border-radius: 6px;
+}
+
+.qr-img {
+  display: block;
+  width: min(52vmin, 32vh);
+  aspect-ratio: 1;
+  image-rendering: pixelated;
+}
+
+/* Delivery and Payment */
+
+/* Portrait: QR card, then the text and button below it. Landscape: text and button beside the card. */
+.delivery__body,
+.payment__body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--gap);
+}
+
+.delivery__side,
+.payment__side {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--gap);
+}
+
+@media (orientation: landscape) {
+  .delivery__body,
+  .payment__body {
+    flex-direction: row;
+    gap: calc(var(--gap) * 2);
+  }
+
+  .delivery__side,
+  .payment__side {
+    max-width: min(40vw, 760px);
+  }
+}
+
+.delivery .qr-img,
+.delivery .qr-slot,
+.payment .qr-img,
+.payment .qr-slot {
+  width: min(52vmin, 28vh);
+}
+
+/* Payment keeps the slot (the theme spec measures it) and puts the QR image inside it. */
+.payment .qr-slot.qr-slot--filled {
+  border: none;
+  padding: 0;
+}
+
+/* The amount is written in the polaroid's deep bottom margin, like a caption. */
+.payment .framed-card--polaroid {
+  padding-bottom: clamp(14px, 2.4vmin, 36px);
+}
+
+.payment__amount {
+  margin: clamp(10px, 1.6vmin, 24px) 0 0;
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: clamp(44px, 5.6vmin, 92px);
+  line-height: 1.1;
+  text-align: center;
+}
+
+.payment__scan,
+.payment__checking {
+  margin: 0;
+  max-width: min(90vw, 900px);
+  font-weight: 700;
+  font-size: clamp(26px, 3.2vmin, 48px);
+  line-height: 1.25;
+  text-align: center;
+}
+
+.payment__scan {
+  padding: calc(var(--gap) * 0.5) var(--gap);
+  color: var(--paper);
+  background: var(--ink);
+  border-radius: 12px;
+}
+
+.payment__checking {
+  padding: calc(var(--gap) * 0.6) var(--gap);
+  border: 3px solid var(--ink);
+  border-radius: 12px;
+  background: var(--lime);
+  color: var(--ink);
+}
+
+.payment .qr-slot,
+.delivery .qr-slot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--gap);
+}
+
+.qr-slot__error {
+  margin: 0;
+  color: var(--ink);
+  font-weight: 700;
+  font-size: clamp(22px, 2.6vmin, 40px);
+  line-height: 1.25;
+  text-align: center;
+}
+
+.delivery__print-error,
+.delivery__print-held {
+  margin: 0;
+  max-width: min(90vw, 900px);
+  padding: calc(var(--gap) * 0.6) var(--gap);
+  border: 3px solid var(--ink);
+  border-radius: 12px;
+  background: var(--tangerine);
+  color: var(--ink);
+  font-weight: 700;
+  font-size: clamp(24px, 3vmin, 44px);
+  line-height: 1.25;
+  text-align: center;
+}
+
+.delivery__print-held {
+  background: var(--lime);
+}
+
+/* Output */
+
+.stage.output {
+  justify-content: center;
+}
+
+.secret-corner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 80px;
+  height: 80px;
+  z-index: 1000;
+}

@@ -17,6 +17,7 @@ Two phases. The code is the same in both; only accounts, keys, and plans change.
 Rules for this phase:
 - `PAYMONGO_MODE=test` everywhere. Live keys never go into the testing projects.
 - Seed users from `supabase/seed.sql` exist only in the local stack. The cloud test project gets its own admin and kiosk users.
+- **Never seed a hosted project.** Never run `supabase db reset --remote` or `supabase db push --remote --include-seed` against the cloud test or production project: both load `seed.sql`, which creates `admin@local.test` / `kiosk@local.test` with a published password (older CLIs spelled the remote reset `--linked`). Apply schema to hosted projects only with `supabase db push --remote`, after `supabase link --project-ref <ref>`; on CLI 3.x a plain `supabase db push` targets the local database.
 - Photos in the cloud test project are test data; purge them freely.
 
 ## Production phase (later): paid tiers
@@ -34,7 +35,7 @@ Check current pricing at migration time; plans change.
 ## Migration checklist (testing → production)
 
 1. Create a new Supabase Pro project (do not upgrade the test project in place; keep test data separate).
-2. `supabase link --project-ref <prod-ref>` → `supabase db push`.
+2. `supabase link --project-ref <prod-ref>` → `supabase db push --remote` (CLI 3.x pushes to the local stack without `--remote`; see `docs/DEPLOY.md` section A).
 3. Create production admin and kiosk users and their `profiles` rows.
 4. `supabase secrets set PAYMONGO_SECRET_KEY=<live> PAYMONGO_WEBHOOK_SECRET=<live> PAYMONGO_MODE=live` (+ `RESEND_API_KEY`, `EMAIL_FROM`, `CRON_SECRET` for full scope).
 5. Deploy all Edge Functions; register the live PayMongo webhook to the production URL.

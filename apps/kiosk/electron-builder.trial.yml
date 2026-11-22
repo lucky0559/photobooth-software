@@ -1,0 +1,43 @@
+# Trial flavour of the Windows installer (demo backend, VITE_TRIAL=1): `pnpm --filter kiosk build:trial`.
+# Same as electron-builder.yml but bundles out-trial/ into dist-trial/. build:trial builds out-trial/ itself (the
+# real `out/` is never touched) and the before-pack-trial.mjs hook refuses a missing/incomplete `out-trial/`, one with
+# test-only hooks or source maps, or one with Supabase env values baked in. It cross-builds on macOS, but the
+# installer has not been installed or run on Windows yet.
+appId: com.photobooth.kiosk.trial
+# Also the Windows userData folder name: %APPDATA%\Photobooth Kiosk Trial
+productName: Photobooth Kiosk Trial
+directories:
+  output: dist-trial
+# Only the production bundle and package.json. Main/preload/renderer are fully bundled by electron-vite
+# (main and preload require only electron and node: builtins), so no node_modules are shipped.
+files:
+  - out-trial/**/*
+  - package.json
+  - '!**/*.map'
+  - '!**/node_modules/**/*'
+asar: true
+# Electron names the app (and so the userData folder) from package.json `productName`, falling back to `name`
+# ("kiosk"). Set it only in the packaged package.json: %APPDATA%\Photobooth Kiosk Trial on Windows. Dev runs keep "kiosk".
+extraMetadata:
+  productName: Photobooth Kiosk Trial
+  main: out-trial/main/index.js
+beforePack: scripts/before-pack-trial.mjs
+# No auto-update: updates are installed by hand (new installer over the old one).
+publish: null
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  # No code signing configured: Windows SmartScreen warns on first install (docs/DEPLOY.md).
+  # Keep signAndEditExecutable on: it writes the exe icon and version metadata. The real installer is built,
+  # installed and tested on the Windows PC; a macOS cross-build (electron-builder 26.18) also wrote the correct
+  # name/version without wine, but is not a substitute for that.
+  icon: build/icon.ico
+nsis:
+  installerIcon: build/icon.ico
+  uninstallerIcon: build/icon.ico
+  oneClick: false
+  perMachine: true
+  allowToChangeInstallationDirectory: true
+  artifactName: Photobooth-Trial-Paired-Setup-${version}.${ext}
