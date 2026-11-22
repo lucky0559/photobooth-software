@@ -283,8 +283,8 @@ For a demo or trial copy that needs no Supabase or PayMongo, see E.9 (Trial buil
    ```
 
    Output: `apps\kiosk\dist-trial\Photobooth-Trial-Paired-Setup-<version>.exe` (currently `0.2.0`). The "Paired" in the
-   name marks this behaviour. It replaces the older `Photobooth-Trial-Setup-0.1.0.exe` and installs over it, keeping
-   the same data folder and trial clock. `pnpm --filter kiosk dev:trial` runs the same flavour in development.
+   name marks this behaviour. It replaces the older `Photobooth-Trial-Setup-0.1.0.exe` and is expected to install over
+   it, keeping the same data folder and trial clock (expected, not yet tested on Windows). `pnpm --filter kiosk dev:trial` runs the same flavour in development.
    - It is configured to install beside a real kiosk (separate app ID and data folder; not yet tested on Windows): product name `Photobooth Kiosk Trial`, appId `com.photobooth.kiosk.trial`, own
      data folder `%APPDATA%\Photobooth Kiosk Trial`. The Setup PIN and the 5-tap Setup reopening (E.7) work as in the real kiosk.
    - There is no sign-in step: Setup goes PIN, then camera/printer. Only the strip template is active (a 4R demo
@@ -295,8 +295,10 @@ For a demo or trial copy that needs no Supabase or PayMongo, see E.9 (Trial buil
      on the right. The owner cuts the sheet down the middle. The first strip waits, saved as `held-strip.json` in the
      data folder, so it survives a restart. If no second guest finishes after about 10 minutes (the start screen
      checks every 30 seconds, so up to about 10.5 minutes), it prints alone from the start screen with the right
-     half blank. At most one strip is held at a time. The waiting guest sees a message saying so, and each guest's
-     download QR shows only their own strip. The print copies setting does not apply.
+     half blank. The wait is only checked while the start screen is showing, so a kiosk left on another screen (for
+     example a guest walked away mid-capture) keeps the strip held until it returns to the start screen. At most one
+     strip is held at a time. The waiting guest sees a message saying so, and each guest's saved photo is only their
+     own strip (in the real kiosk the download QR would fetch it). The print copies setting does not apply.
    - The template footer reads "TRIAL", and the download QR encodes the text `Trial build: the real kiosk shows your
      photo download link here.` instead of a link.
    - The real camera and printer are used.
