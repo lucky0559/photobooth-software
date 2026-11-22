@@ -4,8 +4,8 @@
 # refuses a missing/incomplete `out/` or one containing test-only hooks, so the fake-API e2e build (`out-e2e/`)
 # can never be packaged.
 appId: com.photobooth.kiosk.trial
-# Also the Windows userData folder name: %APPDATA%\Photobooth Kiosk
-productName: Photobooth Trial
+# Also the Windows userData folder name: %APPDATA%\Photobooth Kiosk Trial
+productName: Photobooth Kiosk Trial
 directories:
   output: dist-trial
 # Only the production bundle and package.json. Main/preload/renderer are fully bundled by electron-vite
@@ -17,9 +17,9 @@ files:
   - '!**/node_modules/**/*'
 asar: true
 # Electron names the app (and so the userData folder) from package.json `productName`, falling back to `name`
-# ("kiosk"). Set it only in the packaged package.json: %APPDATA%\Photobooth Kiosk on Windows. Dev runs keep "kiosk".
+# ("kiosk"). Set it only in the packaged package.json: %APPDATA%\Photobooth Kiosk Trial on Windows. Dev runs keep "kiosk".
 extraMetadata:
-  productName: Photobooth Trial
+  productName: Photobooth Kiosk Trial
   main: out-trial/main/index.js
 beforePack: scripts/before-pack-trial.mjs
 # No auto-update: updates are installed by hand (new installer over the old one).
