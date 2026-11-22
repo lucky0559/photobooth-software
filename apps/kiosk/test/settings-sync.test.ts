@@ -119,6 +119,12 @@ describe('attractStatus', () => {
     expect(s).toEqual({ canStart: true, banner: null, priceLabel: 'Free today!' });
   });
 
+  it('trial: offline does not block a paid session; the real build still does', () => {
+    const trial = attractStatus({ settings: ONLINE, template: TEMPLATE, online: false, trial: true });
+    expect(trial).toEqual({ canStart: true, banner: null, priceLabel: '₱50.00' });
+    expect(attractStatus({ settings: ONLINE, template: TEMPLATE, online: false, trial: false }).canStart).toBe(false);
+  });
+
   it('disables start offline when not in free mode', () => {
     const s = attractStatus({ settings: ONLINE, template: TEMPLATE, online: false });
     expect(s.canStart).toBe(false);

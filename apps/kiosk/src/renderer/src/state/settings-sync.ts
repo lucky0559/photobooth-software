@@ -60,12 +60,14 @@ export function attractStatus(i: {
   settings: KioskSettings;
   template: Template | null;
   online: boolean;
+  /** Trial build: the demo backend needs no network, so being offline never blocks a paid session. */
+  trial?: boolean;
   /** The saved-sessions file is unreadable: a new session could not be queued, so none may start (free mode too). */
   queueUnavailable?: boolean;
 }): AttractStatus {
   const priceLabel = i.settings.freeMode ? 'Free today!' : formatPeso(i.settings.priceCentavos);
   if (i.queueUnavailable) return { canStart: false, banner: OUT_OF_SERVICE_BANNER, priceLabel };
   if (i.template === null) return { canStart: false, banner: 'Setup needed: no active template', priceLabel };
-  if (!i.online && !i.settings.freeMode) return { canStart: false, banner: 'Offline — payments unavailable', priceLabel };
+  if (!i.online && !i.trial && !i.settings.freeMode) return { canStart: false, banner: 'Offline — payments unavailable', priceLabel };
   return { canStart: true, banner: null, priceLabel };
 }

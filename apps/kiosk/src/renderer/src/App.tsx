@@ -129,7 +129,7 @@ function KioskFlow({
       return (
         <>
           <Attract
-            status={ready ? attractStatus({ settings, template, online, queueUnavailable }) : null}
+            status={ready ? attractStatus({ settings, template, online, queueUnavailable, trial: import.meta.env.VITE_TRIAL === '1' }) : null}
             onStart={() => dispatch({ type: 'START' })}
           />
           <div className="secret-corner" aria-hidden onPointerDown={onSecretTap} />
