@@ -47,12 +47,12 @@ describe('transition', () => {
     expect(transition(r, { type: 'TICK', now: 61_000 }, paid)).toMatchObject({ name: 'output', filter: 'bw' });
   });
   it('delivery returns to attract after 45s', () => {
-    const d = { name: 'delivery', sessionId: 's1', printError: null, enteredAt: 0 } as KioskState;
+    const d = { name: 'delivery', sessionId: 's1', printError: null, printHeld: false, enteredAt: 0 } as KioskState;
     expect(transition(d, { type: 'TICK', now: 44_999 }, paid)).toBe(d);
     expect(transition(d, { type: 'TICK', now: 45_000 }, paid)).toEqual({ name: 'attract' });
   });
   it('DONE returns delivery to attract', () => {
-    const d = { name: 'delivery', sessionId: 's1', printError: 'jam', enteredAt: 0 } as KioskState;
+    const d = { name: 'delivery', sessionId: 's1', printError: 'jam', printHeld: false, enteredAt: 0 } as KioskState;
     expect(transition(d, { type: 'DONE' }, paid)).toEqual({ name: 'attract' });
   });
   it('DONE is ignored outside delivery (same reference)', () => {
@@ -79,7 +79,11 @@ describe('transition', () => {
   });
   it('OUTPUT_DONE moves output to delivery', () => {
     const o = { name: 'output', sessionId: 's1', amountCentavos: 0, shots: ['a'], filter: 'bw' } as KioskState;
-    expect(transition(o, { type: 'OUTPUT_DONE', printError: 'jam', now: 7 }, paid)).toEqual({ name: 'delivery', sessionId: 's1', printError: 'jam', enteredAt: 7 });
+    expect(transition(o, { type: 'OUTPUT_DONE', printError: 'jam', now: 7 }, paid)).toEqual({ name: 'delivery', sessionId: 's1', printError: 'jam', printHeld: false, enteredAt: 7 });
+  });
+  it('OUTPUT_DONE with held: true sets printHeld', () => {
+    const o = { name: 'output', sessionId: 's1', amountCentavos: 0, shots: ['a'], filter: 'bw' } as KioskState;
+    expect(transition(o, { type: 'OUTPUT_DONE', printError: null, held: true, now: 7 }, paid)).toEqual({ name: 'delivery', sessionId: 's1', printError: null, printHeld: true, enteredAt: 7 });
   });
   it('CAMERA_RETRY without an error returns the same reference', () => {
     const c = { name: 'capture', sessionId: 's1', amountCentavos: 0, shots: [] } as KioskState;

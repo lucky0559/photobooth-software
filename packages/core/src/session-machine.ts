@@ -13,7 +13,7 @@ export type KioskState =
   | { name: 'capture'; sessionId: string; amountCentavos: number; shots: string[]; error?: 'camera_unavailable' }
   | { name: 'review'; sessionId: string; amountCentavos: number; shots: string[]; filter: FilterId; enteredAt: number }
   | { name: 'output'; sessionId: string; amountCentavos: number; shots: string[]; filter: FilterId }
-  | { name: 'delivery'; sessionId: string; printError: string | null; enteredAt: number };
+  | { name: 'delivery'; sessionId: string; printError: string | null; printHeld: boolean; enteredAt: number };
 
 export type KioskEvent =
   | { type: 'START'; sessionId: string; now: number }
@@ -25,7 +25,7 @@ export type KioskEvent =
   | { type: 'CAMERA_RETRY' }
   | { type: 'FILTER_SELECTED'; filter: FilterId }
   | { type: 'CONFIRM'; now: number }
-  | { type: 'OUTPUT_DONE'; printError: string | null; now: number }
+  | { type: 'OUTPUT_DONE'; printError: string | null; held?: boolean; now: number }
   | { type: 'DONE' }
   | { type: 'TICK'; now: number };
 
@@ -84,7 +84,7 @@ export function transition(state: KioskState, event: KioskEvent, settings: Kiosk
     }
     case 'output':
       if (event.type === 'OUTPUT_DONE') {
-        return { name: 'delivery', sessionId: state.sessionId, printError: event.printError, enteredAt: event.now };
+        return { name: 'delivery', sessionId: state.sessionId, printError: event.printError, printHeld: event.held === true, enteredAt: event.now };
       }
       return state;
     case 'delivery':

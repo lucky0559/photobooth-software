@@ -8,3 +8,4 @@ export * from './settings.ts';
 export * from './templates.ts';
 export * from './session-machine.ts';
 export * from './reports.ts';
+export * from './paired-print.ts';

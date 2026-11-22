@@ -17,6 +17,7 @@ export interface KioskSettings {
   copiesPerSession: 1 | 2 | 3 | 4;
   linkExpiryDays: number;
   activeTemplateId: string | null;
+  pairedPrint?: boolean;
 }
 
 export interface Template {

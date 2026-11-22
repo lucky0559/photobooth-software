@@ -3,6 +3,12 @@ import { validateSettings } from '../src/settings.ts';
 import { DEFAULT_SETTINGS } from '../src/session-machine.ts';
 
 describe('validateSettings', () => {
+  it('passes pairedPrint through and keeps it out of the defaults', () => {
+    const r = validateSettings({ ...DEFAULT_SETTINGS, pairedPrint: true });
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.value.pairedPrint).toBe(true);
+    expect('pairedPrint' in DEFAULT_SETTINGS).toBe(false);
+  });
   it('accepts defaults', () => expect(validateSettings(DEFAULT_SETTINGS)).toEqual({ ok: true, value: DEFAULT_SETTINGS }));
   it('rejects price below ₱20 and above ₱1,000 with exact message', () => {
     for (const p of [1999, 100001, 150.5]) {
