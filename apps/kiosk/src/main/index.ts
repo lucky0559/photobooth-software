@@ -76,6 +76,14 @@ app.on('web-contents-created', (_e, contents) => {
 const isSecondInstance = shouldTakeSingleInstanceLock(app.isPackaged) && !app.requestSingleInstanceLock();
 let mainWindow: BrowserWindow | null = null;
 
+/** Shows the trial-ended page; a swap landing mid-load rejects with ERR_ABORTED, which is harmless. */
+function loadTrialEnded(win: BrowserWindow): void {
+  win.loadURL(trialEndedUrl()).catch((e: unknown) => {
+    if ((e as { code?: string })?.code === 'ERR_ABORTED') return;
+    console.error('trial: could not show the ended page');
+  });
+}
+
 function createWindow(onShown: () => void, trialEnded = false): void {
   const packaged = app.isPackaged;
   const win = new BrowserWindow({
@@ -107,7 +115,7 @@ function createWindow(onShown: () => void, trialEnded = false): void {
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
 
   if (__PB_TRIAL_BUILD__ && trialEnded) {
-    void win.loadURL(trialEndedUrl());
+    loadTrialEnded(win);
   } else if (!packaged && process.env.ELECTRON_RENDERER_URL) {
     void win.loadURL(process.env.ELECTRON_RENDERER_URL);
   } else {
@@ -163,7 +171,7 @@ function startKiosk(): void {
         if (status.state !== 'ended') return;
         clearInterval(timer);
         console.log(`trial: ended (${status.reason})`);
-        if (mainWindow && !mainWindow.isDestroyed()) void mainWindow.loadURL(trialEndedUrl());
+        if (mainWindow && !mainWindow.isDestroyed()) loadTrialEnded(mainWindow);
       }, TRIAL_HEARTBEAT_MS);
     }
   }
