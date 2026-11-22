@@ -292,7 +292,14 @@ For a demo or trial copy that needs no Supabase or PayMongo, see E.9 (Trial buil
      confirms itself after 5 seconds. Nothing is charged.
    - The template footer reads "TRIAL", and the download QR encodes the text `Trial build: the real kiosk shows your
      photo download link here.` instead of a link.
-   - The real camera and printer are used. There is no expiry.
+   - The real camera and printer are used.
+   - **3-day limit.** The first launch starts a 72-hour clock, stored in `trial.json` in the data folder. When it runs
+     out (checked at launch and every minute while the kiosk is open) the window switches to a static page: "Trial
+     ended. Please contact your vendor to continue." The same happens if the PC clock is moved back by more than
+     10 minutes, or if `trial.json` cannot be read or written. Reinstalling does not reset it, because the data
+     folder survives an uninstall. To grant a fresh trial, delete `%APPDATA%\Photobooth Kiosk Trial\trial.json` (or
+     the whole folder) and relaunch. Known weakness: a determined user can do the same. To test it quickly, edit
+     `firstLaunchAt` in `trial.json` to 4 days ago (milliseconds since 1970) and relaunch.
    - Unsigned, so SmartScreen warns as in step 6. No auto-update.
    - It was cross-built on macOS and has not been installed or run on Windows yet. Check it on a Windows PC before
      handing it out.

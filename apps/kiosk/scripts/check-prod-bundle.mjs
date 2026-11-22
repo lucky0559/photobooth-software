@@ -6,8 +6,8 @@ import { fileURLToPath } from 'node:url';
 
 export const FORBIDDEN = ['__pbDebug', '__pbFake', '__pbPrintCalls', 'PB_FAKE', 'PB_USER_DATA'];
 
-/** Present only in the trial bundle (the demo payment QR): the real `out/` must never contain it. */
-export const TRIAL_ONLY_MARKERS = ['DEMO PAYMENT'];
+/** Present only in the trial bundle (the demo payment QR, the trial clock file): the real `out/` must never contain them. */
+export const TRIAL_ONLY_MARKERS = ['DEMO PAYMENT', 'trial.json'];
 
 /** Env values the trial build must not inline: a Supabase URL (hosted or local) or a JWT-looking key. */
 export const TRIAL_FORBIDDEN_ENV = /supabase\.co|127\.0\.0\.1:54321|eyJ[A-Za-z0-9_-]{10,}/;

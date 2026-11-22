@@ -12,6 +12,8 @@ import { EMPTY_QUEUE, normalizeQueueFile, type QueueFile } from './queue-store';
 import { createNavigationGuard, isAllowedPermissionCheck, isAllowedPermissionRequest } from './security';
 import { focusExistingWindow, shouldTakeSingleInstanceLock } from './single-instance';
 import { applyStartupNotices, flagDroppedUploads } from './startup';
+import { createTrialGuard, TRIAL_HEARTBEAT_MS } from './trial';
+import { trialEndedUrl } from './trial-ended-page';
 
 /** Deletes local photos whose upload finished 7+ days ago (run once on app start). Never throws. */
 function deleteExpiredPhotos(queue: JsonStore<QueueFile>, photosDir: string, now: number): void {
@@ -74,7 +76,7 @@ app.on('web-contents-created', (_e, contents) => {
 const isSecondInstance = shouldTakeSingleInstanceLock(app.isPackaged) && !app.requestSingleInstanceLock();
 let mainWindow: BrowserWindow | null = null;
 
-function createWindow(onShown: () => void): void {
+function createWindow(onShown: () => void, trialEnded = false): void {
   const packaged = app.isPackaged;
   const win = new BrowserWindow({
     width: 1080,
@@ -104,7 +106,9 @@ function createWindow(onShown: () => void): void {
   });
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
 
-  if (!packaged && process.env.ELECTRON_RENDERER_URL) {
+  if (__PB_TRIAL_BUILD__ && trialEnded) {
+    void win.loadURL(trialEndedUrl());
+  } else if (!packaged && process.env.ELECTRON_RENDERER_URL) {
     void win.loadURL(process.env.ELECTRON_RENDERER_URL);
   } else {
     void win.loadFile(indexFile);
@@ -143,7 +147,27 @@ function startKiosk(): void {
   applyStartupNotices(store, queue);
   deleteExpiredPhotos(queue, photosDir, Date.now());
   registerIpc(store, join(userData, 'overlays'), photosDir, queue, switches);
-  createWindow(() => reportOrphanPhotos(queue, photosDir));
+
+  let trialEnded = false;
+  if (__PB_TRIAL_BUILD__) {
+    // Evaluated once before the window exists; a heartbeat then re-checks while the kiosk stays open.
+    const guard = createTrialGuard(join(userData, 'trial.json'));
+    const first = guard.check();
+    if (first.state === 'ended') {
+      trialEnded = true;
+      console.log(`trial: ended (${first.reason})`);
+    } else {
+      console.log('trial: started');
+      const timer = setInterval(() => {
+        const status = guard.check();
+        if (status.state !== 'ended') return;
+        clearInterval(timer);
+        console.log(`trial: ended (${status.reason})`);
+        if (mainWindow && !mainWindow.isDestroyed()) void mainWindow.loadURL(trialEndedUrl());
+      }, TRIAL_HEARTBEAT_MS);
+    }
+  }
+  createWindow(() => reportOrphanPhotos(queue, photosDir), trialEnded);
 }
 
 app.on('window-all-closed', () => app.quit());

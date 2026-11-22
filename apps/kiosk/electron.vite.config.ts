@@ -17,7 +17,7 @@ export default defineConfig(({ command }) => {
   const outRoot = testBuild ? 'out-e2e' : trialBuild && command === 'build' ? 'out-trial' : 'out';
   const define = { __PB_TEST_BUILD__: JSON.stringify(testBuild) };
   return {
-    main: { define, build: { externalizeDeps, outDir: `${outRoot}/main` } },
+    main: { define: { ...define, __PB_TRIAL_BUILD__: JSON.stringify(trialBuild) }, build: { externalizeDeps, outDir: `${outRoot}/main` } },
     preload: { define, build: { externalizeDeps, outDir: `${outRoot}/preload` } },
     // The renderer's trial switch follows the same process.env flag as the output dir (never `.env`), so a
     // stray VITE_TRIAL=1 in `.env` cannot turn the real build into a trial one. A constant lets the bundler drop

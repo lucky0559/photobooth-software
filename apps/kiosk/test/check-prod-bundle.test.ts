@@ -79,6 +79,16 @@ describe('findTestHooks (production bundle guard)', () => {
       expect(checkPackageableBundle(dir, { trial: true })).toEqual([]);
     });
 
+    it('real bundle: refuses the trial-only trial.json marker', () => {
+      writeFileSync(join(dir, 'main', 'index.js'), 'f="trial.json"');
+      expect(checkPackageableBundle(dir)).toEqual([`trial-only marker ${join('main', 'index.js')}: trial.json`]);
+    });
+
+    it('trial bundle: accepts the trial.json marker', () => {
+      writeFileSync(join(dir, 'main', 'index.js'), 'f="trial.json"');
+      expect(checkPackageableBundle(dir, { trial: true })).toEqual([]);
+    });
+
     it('trial bundle: ignores the CSP hosts in index.html', () => {
       writeFileSync(
         join(dir, 'renderer', 'index.html'),
