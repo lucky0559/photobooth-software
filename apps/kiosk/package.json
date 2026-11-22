@@ -1,6 +1,6 @@
 {
   "name": "kiosk",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Self-service photobooth kiosk (Windows): QR Ph payment, capture, print and QR download.",
   "author": "Photobooth Software",
   "private": true,

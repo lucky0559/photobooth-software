@@ -89,7 +89,8 @@ Packaging: `pnpm --filter kiosk package` (unpacked app in `apps/kiosk/dist/`) an
 [docs/DEPLOY.md](docs/DEPLOY.md) section E.
 
 Trial flavour (in-memory demo backend, no Supabase/PayMongo, simulated payment): `pnpm --filter kiosk dev:trial` (any OS) to
-run it in development, `pnpm --filter kiosk build:trial` for the installer (`apps/kiosk/dist-trial/`). See
+run it in development, `pnpm --filter kiosk build:trial` for the installer (`apps/kiosk/dist-trial/`). The trial runs paired print (two guests per 4x6 sheet, cut down the
+middle, a 10-minute wait for the second guest, one held strip at most). See
 [docs/DEPLOY.md](docs/DEPLOY.md) section E.9.
 
 ## Documents

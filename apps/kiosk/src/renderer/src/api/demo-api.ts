@@ -30,7 +30,7 @@ export class DemoKioskApi implements KioskApi {
   ) {}
 
   async getSettings(): Promise<KioskSettings> {
-    return { ...DEFAULT_SETTINGS, activeTemplateId: DEMO_ACTIVE_TEMPLATE_ID };
+    return { ...DEFAULT_SETTINGS, activeTemplateId: DEMO_ACTIVE_TEMPLATE_ID, pairedPrint: true };
   }
 
   async getTemplate(id: string): Promise<{ template: Template; overlayPng: ArrayBuffer }> {

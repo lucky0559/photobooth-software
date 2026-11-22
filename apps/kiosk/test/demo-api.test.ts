@@ -13,9 +13,9 @@ describe('DemoKioskApi', () => {
     api = new DemoKioskApi(() => t, stubOverlay);
   });
 
-  it('serves default settings with the demo template active and payments on', async () => {
+  it('serves default settings with the demo template active, paired print on and payments on', async () => {
     const s = await api.getSettings();
-    expect(s).toEqual({ ...DEFAULT_SETTINGS, activeTemplateId: 'demo-strip' });
+    expect(s).toEqual({ ...DEFAULT_SETTINGS, activeTemplateId: 'demo-strip', pairedPrint: true });
     expect(s.freeMode).toBe(false);
   });
 
