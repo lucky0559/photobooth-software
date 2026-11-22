@@ -1,7 +1,7 @@
 import type { FilterId, Template } from '@pb/core';
 import type { KioskBridge } from '../../../shared/bridge';
 import { shotStore, type ShotStore } from '../camera/shot-store';
-import { composeSheet } from './compose';
+import { composeSheet, composeStrip } from './compose';
 
 export interface SessionImages {
   shots: ImageBitmap[];
@@ -47,6 +47,16 @@ export async function buildSessionSheet(args: SessionSource & { filter: FilterId
   const images = await loadSessionImages(args);
   try {
     return await composeSheet({ layout: args.template.layout, filter: args.filter, ...images });
+  } finally {
+    closeSessionImages(images);
+  }
+}
+
+/** Composes the session's single 600×1800 strip JPEG (the paired-print path). */
+export async function buildSessionStrip(args: SessionSource & { filter: FilterId }): Promise<Blob> {
+  const images = await loadSessionImages(args);
+  try {
+    return await composeStrip({ layout: args.template.layout, filter: args.filter, ...images });
   } finally {
     closeSessionImages(images);
   }

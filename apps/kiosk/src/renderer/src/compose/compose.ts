@@ -46,3 +46,20 @@ export function composeSheet(input: ComposeInput): Promise<Blob> {
   for (const r of printSheetPlacements(input.layout)) ctx.drawImage(layoutCanvas, r.x, r.y, r.w, r.h);
   return sheet.convertToBlob({ type: 'image/jpeg', quality: JPEG_QUALITY });
 }
+
+/** One 600×1800 strip as JPEG q0.92: the layout canvas on its own, for pairing on a shared sheet later. */
+export function composeStrip(input: ComposeInput): Promise<Blob> {
+  return composeLayout(input).convertToBlob({ type: 'image/jpeg', quality: JPEG_QUALITY });
+}
+
+/** The 1200×1800 shared sheet: `left` on the left half, `right` on the right half (left white when `null`). */
+export function composePairSheet(left: ImageBitmap, right: ImageBitmap | null): Promise<Blob> {
+  const sheet = new OffscreenCanvas(SHEET.w, SHEET.h);
+  const ctx = context2d(sheet);
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, SHEET.w, SHEET.h);
+  const [l, r] = printSheetPlacements('strip_2x6');
+  ctx.drawImage(left, l!.x, l!.y, l!.w, l!.h);
+  if (right) ctx.drawImage(right, r!.x, r!.y, r!.w, r!.h);
+  return sheet.convertToBlob({ type: 'image/jpeg', quality: JPEG_QUALITY });
+}
