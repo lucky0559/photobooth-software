@@ -29,6 +29,24 @@ describe('DemoKioskApi', () => {
     await expect(api.getTemplate('nope')).rejects.toThrow('Unknown template nope');
   });
 
+  it('renders each overlay once, and does not cache a failed render', async () => {
+    let calls = 0;
+    const counting = new DemoKioskApi(() => 0, async (l) => {
+      calls++;
+      return stubOverlay(l);
+    });
+    await counting.getTemplate('demo-strip');
+    await counting.getTemplate('demo-strip');
+    expect(calls).toBe(1);
+    let n = 0;
+    const flaky = new DemoKioskApi(() => 0, async (l) => {
+      if (n++ === 0) throw new Error('canvas failed');
+      return stubOverlay(l);
+    });
+    await expect(flaky.getTemplate('demo-strip')).rejects.toThrow('canvas failed');
+    expect(new TextDecoder().decode((await flaky.getTemplate('demo-strip')).overlayPng)).toBe('strip_2x6');
+  });
+
   it('creates a demo payment with an inline SVG QR', async () => {
     const p = await api.createPayment(pay);
     expect(p.amountCentavos).toBe(DEFAULT_SETTINGS.priceCentavos);

@@ -10,7 +10,8 @@ export const DEMO_TEMPLATES: Record<string, Template> = {
   'demo-4r': { id: 'demo-4r', name: 'Demo 4R', layout: 'print_4r', overlayPath: 'demo-4r.png' },
 };
 
-const DEMO_QR =
+// Built per call, not at module level, so the bundler can drop the whole demo backend from the real build.
+const demoQr = (): string =>
   'data:image/svg+xml,' +
   encodeURIComponent(
     '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200"><rect width="200" height="200" fill="#fff"/><rect x="20" y="20" width="160" height="160" fill="#000"/><text x="100" y="110" fill="#fff" font-size="20" text-anchor="middle">DEMO PAYMENT</text></svg>',
@@ -21,6 +22,7 @@ export class DemoKioskApi implements KioskApi {
   private readonly created = new Map<string, number>();
   private readonly cancelled = new Set<string>();
   private nextPayment = 1;
+  private readonly overlays = new Map<LayoutId, Promise<ArrayBuffer>>();
 
   constructor(
     private readonly now: () => number = Date.now,
@@ -34,7 +36,18 @@ export class DemoKioskApi implements KioskApi {
   async getTemplate(id: string): Promise<{ template: Template; overlayPng: ArrayBuffer }> {
     const template = DEMO_TEMPLATES[id];
     if (!template) throw new Error(`Unknown template ${id}`);
-    return { template, overlayPng: await this.overlay(template.layout) };
+    return { template, overlayPng: await this.overlayFor(template.layout) };
+  }
+
+  /** Render each layout's overlay once (syncSettings asks every ~5 s); a failed render is not cached. */
+  private overlayFor(layout: LayoutId): Promise<ArrayBuffer> {
+    let p = this.overlays.get(layout);
+    if (!p) {
+      p = this.overlay(layout);
+      this.overlays.set(layout, p);
+      p.catch(() => this.overlays.delete(layout));
+    }
+    return p;
   }
 
   async createPayment(_i: {
@@ -44,7 +57,7 @@ export class DemoKioskApi implements KioskApi {
   }): Promise<{ paymentId: string; qrImageDataUrl: string; amountCentavos: number }> {
     const paymentId = `demo-pay-${this.nextPayment++}`;
     this.created.set(paymentId, this.now());
-    return { paymentId, qrImageDataUrl: DEMO_QR, amountCentavos: DEFAULT_SETTINGS.priceCentavos };
+    return { paymentId, qrImageDataUrl: demoQr(), amountCentavos: DEFAULT_SETTINGS.priceCentavos };
   }
 
   async getPaymentStatus(paymentId: string): Promise<PaymentStatus> {
