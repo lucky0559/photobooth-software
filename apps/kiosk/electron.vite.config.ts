@@ -19,6 +19,13 @@ export default defineConfig(({ command }) => {
   return {
     main: { define, build: { externalizeDeps, outDir: `${outRoot}/main` } },
     preload: { define, build: { externalizeDeps, outDir: `${outRoot}/preload` } },
-    renderer: { plugins: [react()], build: { outDir: `${outRoot}/renderer` } },
+    // The renderer's trial switch follows the same process.env flag as the output dir (never `.env`), so a
+    // stray VITE_TRIAL=1 in `.env` cannot turn the real build into a trial one. A constant lets the bundler drop
+    // the demo backend from the real bundle.
+    renderer: {
+      plugins: [react()],
+      define: { 'import.meta.env.VITE_TRIAL': JSON.stringify(trialBuild ? '1' : '') },
+      build: { outDir: `${outRoot}/renderer` },
+    },
   };
 });

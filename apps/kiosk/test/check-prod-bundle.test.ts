@@ -60,4 +60,40 @@ describe('findTestHooks (production bundle guard)', () => {
       join('renderer', 'assets', 'index.js') + ': __pbFake',
     ]);
   });
+
+  describe('trial vs real bundle', () => {
+    beforeEach(() => {
+      writeFileSync(join(dir, 'main', 'index.js'), 'ok');
+      mkdirSync(join(dir, 'preload'));
+      writeFileSync(join(dir, 'preload', 'index.js'), '');
+      writeFileSync(join(dir, 'renderer', 'index.html'), '<html></html>');
+    });
+
+    it('real bundle: refuses the trial-only DEMO PAYMENT marker', () => {
+      writeFileSync(join(dir, 'renderer', 'assets', 'a.js'), 'x="DEMO PAYMENT"');
+      expect(checkPackageableBundle(dir)).toEqual([`trial-only marker ${join('renderer', 'assets', 'a.js')}: DEMO PAYMENT`]);
+    });
+
+    it('trial bundle: accepts the DEMO PAYMENT marker', () => {
+      writeFileSync(join(dir, 'renderer', 'assets', 'a.js'), 'x="DEMO PAYMENT"');
+      expect(checkPackageableBundle(dir, { trial: true })).toEqual([]);
+    });
+
+    it('trial bundle: ignores the CSP hosts in index.html', () => {
+      writeFileSync(
+        join(dir, 'renderer', 'index.html'),
+        '<meta content="connect-src https://*.supabase.co http://127.0.0.1:54321">',
+      );
+      expect(checkPackageableBundle(dir, { trial: true })).toEqual([]);
+    });
+
+    it.each(['https://abc.supabase.co', 'http://127.0.0.1:54321', 'eyJhbGciOiJIUzI1NiIsInR5cCI6'])(
+      'trial bundle: refuses a baked-in env value (%s)',
+      (value) => {
+        writeFileSync(join(dir, 'renderer', 'assets', 'a.js'), `u="${value}"`);
+        expect(checkPackageableBundle(dir, { trial: true })).toHaveLength(1);
+        expect(checkPackageableBundle(dir)).toEqual([]);
+      },
+    );
+  });
 });

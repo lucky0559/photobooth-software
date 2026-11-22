@@ -36,7 +36,7 @@ function createApi(): { api: KioskApi; auth: SetupAuth | null } {
 }
 
 const root = createRoot(document.getElementById('root') as HTMLElement);
-const env = checkEnv(import.meta.env);
+const env = checkEnv({ ...import.meta.env, VITE_TRIAL: import.meta.env.VITE_TRIAL });
 if (env.warnings.length > 0) console.warn(`Kiosk config warning: not set or invalid: ${env.warnings.join(', ')}`);
 
 if (!env.ok) {
