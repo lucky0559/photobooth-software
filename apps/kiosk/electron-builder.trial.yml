@@ -1,8 +1,8 @@
 # Trial flavour of the Windows installer (demo backend, VITE_TRIAL=1): `pnpm --filter kiosk build:trial`.
-# Same as electron-builder.yml but bundles out-trial/ into dist-trial/. Windows installer for the kiosk. Build it ON THE WINDOWS PC: `pnpm --filter kiosk build:win`
-# (docs/DEPLOY.md, section E). The scripts always run the production `pnpm build` first; the beforePack hook
-# refuses a missing/incomplete `out/` or one containing test-only hooks, so the fake-API e2e build (`out-e2e/`)
-# can never be packaged.
+# Same as electron-builder.yml but bundles out-trial/ into dist-trial/. build:trial builds out-trial/ itself (the
+# real `out/` is never touched) and the before-pack-trial.mjs hook refuses a missing/incomplete `out-trial/`, one with
+# test-only hooks or source maps, or one with Supabase env values baked in. It cross-builds on macOS, but the
+# installer has not been installed or run on Windows yet.
 appId: com.photobooth.kiosk.trial
 # Also the Windows userData folder name: %APPDATA%\Photobooth Kiosk Trial
 productName: Photobooth Kiosk Trial

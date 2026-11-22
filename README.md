@@ -88,7 +88,7 @@ Packaging: `pnpm --filter kiosk package` (unpacked app in `apps/kiosk/dist/`) an
 (Windows installer; run it on the Windows PC). Both always run the production build first. See
 [docs/DEPLOY.md](docs/DEPLOY.md) section E.
 
-Trial flavour (in-memory demo backend, no Supabase/PayMongo, simulated payment): `pnpm --filter kiosk dev:trial` to
+Trial flavour (in-memory demo backend, no Supabase/PayMongo, simulated payment): `pnpm --filter kiosk dev:trial` (any OS) to
 run it in development, `pnpm --filter kiosk build:trial` for the installer (`apps/kiosk/dist-trial/`). See
 [docs/DEPLOY.md](docs/DEPLOY.md) section E.9.
 

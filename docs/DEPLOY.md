@@ -275,7 +275,8 @@ For a demo or trial copy that needs no Supabase or PayMongo, see E.9 (Trial buil
    into that folder (this is the Startup folder of the signed-in Windows user, which is what the kiosk needs). With
    the single-instance lock, a second launch only brings the running kiosk to the front.
 9. **Trial build (optional).** A separate installer for demos and testers. It runs against an in-memory demo backend,
-   so it needs no `.env`, no Supabase and no PayMongo:
+   so it needs no `.env`, no Supabase and no PayMongo (it ignores any Supabase values in `apps/kiosk/.env`). Steps 1 to 3
+   above (Node, pnpm, `pnpm install`) are still required to build it:
 
    ```powershell
    pnpm --filter kiosk build:trial
@@ -283,8 +284,10 @@ For a demo or trial copy that needs no Supabase or PayMongo, see E.9 (Trial buil
 
    Output: `apps\kiosk\dist-trial\Photobooth-Trial-Setup-<version>.exe`. `pnpm --filter kiosk dev:trial` runs the same
    flavour in development.
-   - It installs beside a real kiosk: product name `Photobooth Kiosk Trial`, appId `com.photobooth.kiosk.trial`, own
+   - It is configured to install beside a real kiosk (separate app ID and data folder; not yet tested on Windows): product name `Photobooth Kiosk Trial`, appId `com.photobooth.kiosk.trial`, own
      data folder `%APPDATA%\Photobooth Kiosk Trial`. The Setup PIN and the 5-tap Setup reopening (E.7) work as in the real kiosk.
+   - There is no sign-in step: Setup goes PIN, then camera/printer. Only the strip template is active (a 4R demo
+     template exists but cannot be selected).
    - Settings are fixed at the core defaults (PHP 150.00, 4 shots, 5 s countdown, free mode off). The demo payment QR
      confirms itself after 5 seconds. Nothing is charged.
    - The template footer reads "TRIAL", and the download QR encodes the text `Trial build: the real kiosk shows your
