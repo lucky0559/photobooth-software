@@ -17,6 +17,11 @@ describe('FakeKioskApi', () => {
     expect(await api.getSettings()).toEqual({ ...DEFAULT_SETTINGS, activeTemplateId: 'fake-strip', priceCentavos: 5000 });
   });
 
+  it('reports the paired print timing, defaulting to the production values', () => {
+    expect(setup().api.pairTiming()).toEqual({ waitMs: 600_000, pollMs: 30_000 });
+    expect(setup({ pairWaitMs: 2000, pairPollMs: 500 }).api.pairTiming()).toEqual({ waitMs: 2000, pollMs: 500 });
+  });
+
   it('parses PB_FAKE_CONFIG JSON over defaults', () => {
     expect(parseFakeConfig('{"payAfterMs":100,"settings":{"freeMode":true}}')).toEqual({
       settings: { freeMode: true },

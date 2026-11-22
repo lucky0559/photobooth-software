@@ -1,8 +1,9 @@
-import type { KioskSettings, KioskState, Template } from '@pb/core';
+import { isPairedMode, type KioskSettings, type KioskState, type Template } from '@pb/core';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { buildSessionSheet } from '../compose/session-sheet';
+import { composePairSheet } from '../compose/compose';
+import { buildSessionSheet, buildSessionStrip } from '../compose/session-sheet';
 import { recordSheet } from '../debug/last-sheet';
-import { runOutput } from '../output/run-output';
+import { runOutput, type PairedOutcome } from '../output/run-output';
 import type { KioskInput } from '../state/useKiosk';
 import { ActionButton } from '../theme/components/ActionButton';
 import { Backdrop } from '../theme/components/Backdrop';
@@ -44,6 +45,9 @@ export function Output({
   /** Print outcome per session, so Try again never prints a second sheet. */
   const printed = useRef<{ sessionId: string; printError: string | null } | null>(null);
 
+  /** Paired outcome per session, so Try again never claims, holds or prints the strip a second time. */
+  const pairedOutcome = useRef<{ sessionId: string; outcome: PairedOutcome } | null>(null);
+
   const run = useCallback((): void => {
     if (running.current) return;
     running.current = true;
@@ -51,10 +55,12 @@ export function Output({
     void (async () => {
       try {
         if (!template || !downloadToken || !createdAt) throw new Error('Session is incomplete');
-        const { printError, sheet } = await runOutput({
+        const paired = isPairedMode({ pairedPrint: settings.pairedPrint }, template.layout);
+        const { printError, held, sheet } = await runOutput({
           compose: async () => {
             if (import.meta.env.VITE_FAKE_API === '1') fakeComposeFailure();
-            return buildSessionSheet({ template, shotIds: state.shots, filter: state.filter });
+            const source = { template, shotIds: state.shots, filter: state.filter };
+            return paired ? buildSessionStrip(source) : buildSessionSheet(source);
           },
           bridge: window.kiosk,
           onEnqueued,
@@ -72,16 +78,27 @@ export function Output({
           onPrinted: (printError) => {
             printed.current = { sessionId: state.sessionId, printError };
           },
+          paired: paired
+            ? {
+                bridge: window.kiosk,
+                decode: (b) => createImageBitmap(b),
+                composePair: composePairSheet,
+                prior: pairedOutcome.current?.sessionId === state.sessionId ? pairedOutcome.current.outcome : undefined,
+                onOutcome: (outcome) => {
+                  pairedOutcome.current = { sessionId: state.sessionId, outcome };
+                },
+              }
+            : undefined,
         });
         if (import.meta.env.VITE_FAKE_API === '1') recordSheet(sheet);
-        dispatch({ type: 'OUTPUT_DONE', printError, now: Date.now() });
+        dispatch({ type: 'OUTPUT_DONE', printError, held, now: Date.now() });
       } catch (err) {
         console.error('Output failed', err);
         running.current = false;
         setFailed(true);
       }
     })();
-  }, [state, template, settings.copiesPerSession, downloadToken, createdAt, dispatch, onEnqueued]);
+  }, [state, template, settings.copiesPerSession, settings.pairedPrint, downloadToken, createdAt, dispatch, onEnqueued]);
 
   // Runs once on entry (the ref also guards StrictMode's double effect); Try again re-runs it.
   useEffect(run, []); // eslint-disable-line react-hooks/exhaustive-deps

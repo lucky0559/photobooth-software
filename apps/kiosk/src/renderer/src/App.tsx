@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { KioskApi } from './api/kiosk-api';
+import { composePairSheet } from './compose/compose';
+import { DEFAULT_PAIR_TIMING, flushDueHeldStrip, heldStripTimerActive, type PairTiming } from './output/held-strip-timer';
 import { Attract } from './screens/Attract';
 import { Capture } from './screens/Capture';
 import { Delivery } from './screens/Delivery';
@@ -19,7 +21,17 @@ import { BannerTitle } from './theme/components/BannerTitle';
 
 type Screen = 'loading' | 'setup' | 'pin' | 'kiosk';
 
-export function App({ api, auth, configWarnings = [] }: { api: KioskApi; auth: SetupAuth | null; configWarnings?: string[] }) {
+export function App({
+  api,
+  auth,
+  configWarnings = [],
+  pairTiming = DEFAULT_PAIR_TIMING,
+}: {
+  api: KioskApi;
+  auth: SetupAuth | null;
+  configWarnings?: string[];
+  pairTiming?: PairTiming;
+}) {
   const [screen, setScreen] = useState<Screen>('loading');
   const [cameraId, setCameraId] = useState<string | null>(null);
   const [noticeFlags, setNoticeFlags] = useState<Omit<NoticeFlags, 'queueUnavailable' | 'syncFailures'> | null>(null);
@@ -102,6 +114,7 @@ export function App({ api, auth, configWarnings = [] }: { api: KioskApi; auth: S
           queueUnavailable={queueUnavailable}
           onSecretTap={onSecretTap}
           onEnqueued={kickQueue}
+          pairTiming={pairTiming}
         />
       )}
     </>
@@ -115,14 +128,37 @@ function KioskFlow({
   queueUnavailable,
   onSecretTap,
   onEnqueued,
+  pairTiming,
 }: {
   api: KioskApi;
   cameraId: string | null;
   queueUnavailable: boolean;
   onSecretTap: () => void;
   onEnqueued: () => void;
+  pairTiming: PairTiming;
 }) {
   const { state, settings, dispatch, template, online, ready, downloadToken, sessionCreatedAt } = useKiosk(api);
+
+  // Paired print: while idle on the attract screen, print a held strip alone once it has waited long enough.
+  const timerActive = heldStripTimerActive(settings, state.name);
+  useEffect(() => {
+    if (!timerActive) return;
+    let busy = false;
+    const id = setInterval(() => {
+      if (busy) return;
+      busy = true;
+      void flushDueHeldStrip({
+        bridge: window.kiosk,
+        decode: (b) => createImageBitmap(b),
+        composePair: composePairSheet,
+        now: Date.now,
+        waitMs: pairTiming.waitMs,
+      }).finally(() => {
+        busy = false;
+      });
+    }, pairTiming.pollMs);
+    return () => clearInterval(id);
+  }, [timerActive, pairTiming.waitMs, pairTiming.pollMs]);
 
   switch (state.name) {
     case 'attract':

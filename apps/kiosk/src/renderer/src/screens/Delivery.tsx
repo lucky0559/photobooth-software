@@ -72,6 +72,11 @@ export function Delivery({
           )}
         </FramedCard>
         <div className="delivery__side">
+          {state.printHeld && (
+            <p className="delivery__print-held" role="status">
+              Your print comes out when the next guest finishes, or in about 10 minutes. Ask the owner for your print.
+            </p>
+          )}
           {state.printError !== null && (
             <p className="delivery__print-error" role="alert">
               Printing failed. Please call staff — your photo is still available through the QR code.

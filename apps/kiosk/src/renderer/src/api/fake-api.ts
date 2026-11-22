@@ -1,4 +1,5 @@
 import { DEFAULT_SETTINGS, layoutSize, type KioskSettings, type LayoutId, type SessionSync, type Template } from '@pb/core';
+import { DEFAULT_PAIR_TIMING, type PairTiming } from '../output/held-strip-timer';
 import { NOT_KIOSK_ACCOUNT, type KioskApi, type PaymentStatus } from './kiosk-api';
 
 /** Test controls for `FakeKioskApi`. Read on every call, so e2e tests can change `window.__pbFake` at runtime. */
@@ -19,6 +20,10 @@ export interface FakeConfig {
   failCompose?: number;
   /** Sync queue loop interval in ms, read once at startup (default: production 10 s). Backoff is unchanged. */
   queueIntervalMs?: number;
+  /** Paired print: how long a held strip waits before it prints alone (default: production 10 min). */
+  pairWaitMs?: number;
+  /** Paired print: how often the attract screen checks the held strip (default: production 30 s). */
+  pairPollMs?: number;
 }
 
 declare global {
@@ -97,6 +102,11 @@ export class FakeKioskApi implements KioskApi {
     private readonly config: () => FakeConfig,
     private readonly now: () => number = Date.now,
   ) {}
+
+  pairTiming(): PairTiming {
+    const { pairWaitMs, pairPollMs } = this.config();
+    return { waitMs: pairWaitMs ?? DEFAULT_PAIR_TIMING.waitMs, pollMs: pairPollMs ?? DEFAULT_PAIR_TIMING.pollMs };
+  }
 
   async getSettings(): Promise<KioskSettings> {
     return { ...DEFAULT_SETTINGS, activeTemplateId: 'fake-strip', ...this.config().settings };

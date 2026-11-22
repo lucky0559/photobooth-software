@@ -10,6 +10,7 @@ import { simulateCameraLoss } from './camera/camera';
 import { shotStore } from './camera/shot-store';
 import { lastSheetInfo, lastSheetPixel } from './debug/last-sheet';
 import { checkEnv } from './env-check';
+import type { PairTiming } from './output/held-strip-timer';
 import { NotConfigured } from './screens/NotConfigured';
 import type { SetupAuth } from './screens/Setup';
 // Fonts are bundled from @fontsource: the kiosk may be offline, so no runtime font requests.
@@ -20,11 +21,11 @@ import './theme/tokens.css';
 import './theme/theme.css';
 import './styles.css';
 
-function createApi(): { api: KioskApi; auth: SetupAuth | null } {
+function createApi(): { api: KioskApi; auth: SetupAuth | null; pairTiming?: PairTiming } {
   if (import.meta.env.VITE_FAKE_API === '1') {
     // The fake starts signed in (Setup skips sign-in) but supports "Sign out and use another account".
     const fake = createFakeKioskApi();
-    return { api: fake, auth: fake };
+    return { api: fake, auth: fake, pairTiming: fake.pairTiming() };
   }
   if (import.meta.env.VITE_TRIAL === '1') return { api: createDemoKioskApi(), auth: null };
   // checkEnv has already verified both are set.
@@ -43,11 +44,11 @@ if (!env.ok) {
   // No devtools in a packaged kiosk: tell staff instead of showing a black screen.
   root.render(<NotConfigured missing={env.missing} warnings={env.warnings} />);
 } else {
-  const { api, auth } = createApi();
+  const { api, auth, pairTiming } = createApi();
   if (import.meta.env.VITE_FAKE_API === '1') installDebugHooks(api);
   root.render(
     <StrictMode>
-      <App api={api} auth={auth} configWarnings={env.warnings} />
+      <App api={api} auth={auth} configWarnings={env.warnings} pairTiming={pairTiming} />
     </StrictMode>,
   );
 }
