@@ -1,0 +1,8 @@
+- main [ref=f4e49]:
+  - timer "Time left" [ref=f4e51]: 0:57
+  - heading "Pick a look" [level=1] [ref=f4e53]
+  - generic [ref=f4e56]:
+    - button "Original" [pressed] [ref=f4e57] [cursor=pointer]
+    - button "Black & White" [ref=f4e62] [cursor=pointer]
+    - button "Warm" [ref=f4e65] [cursor=pointer]
+  - button "Print" [ref=f4e68] [cursor=pointer]

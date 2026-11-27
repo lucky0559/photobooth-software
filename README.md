@@ -93,6 +93,9 @@ run it in development, `pnpm --filter kiosk build:trial` for the installer (`app
 middle, a 10-minute wait for the second guest, one held strip at most). See
 [docs/DEPLOY.md](docs/DEPLOY.md) section E.9.
 
+iPad Safari trial (static HTTPS build with demo payments and AirPrint): run `pnpm --filter kiosk build:web`, then host
+`apps/kiosk/dist-web/` and follow the [iPad setup and test guide](docs/IPAD.md).
+
 ## Documents
 
 | Document | What it is |
@@ -102,6 +105,7 @@ middle, a 10-minute wait for the second guest, one held strip at most). See
 | [docs/ENVIRONMENTS.md](docs/ENVIRONMENTS.md) | Free tiers for testing, paid tiers for production, migration checklist |
 | [docs/DEPLOY.md](docs/DEPLOY.md) | Step-by-step deploy (Supabase, Edge Functions, PayMongo, Vercel, kiosk installer), Windows hardening, operator runbook |
 | [docs/ACCEPTANCE.md](docs/ACCEPTANCE.md) | Real-hardware acceptance checklist (not run yet) |
+| [docs/IPAD.md](docs/IPAD.md) | Build, host, install and test the iPad Safari trial |
 | [docs/plans/lean-mvp/IMPLEMENTATION_PLAN.md](docs/plans/lean-mvp/IMPLEMENTATION_PLAN.md) | Lean MVP plan (this build) |
 | [docs/plans/full-scope/IMPLEMENTATION_PLAN.md](docs/plans/full-scope/IMPLEMENTATION_PLAN.md) | Full scope: lean MVP + extension tasks |
 

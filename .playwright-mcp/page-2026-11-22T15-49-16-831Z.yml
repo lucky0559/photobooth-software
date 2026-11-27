@@ -1,0 +1,5 @@
+- main [ref=f2e20]:
+  - generic [ref=f2e22]:
+    - heading "Smile!" [level=1] [ref=f2e24]
+    - button "Tap to start" [ref=f2e25] [cursor=pointer]
+    - paragraph [ref=f2e26]: ₱150.00

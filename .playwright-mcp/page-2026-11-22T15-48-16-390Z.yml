@@ -1,0 +1,47 @@
+- iframe [ref=e2]:
+  - generic [ref=f1e1]:
+    - banner "Recording" [ref=f1e2]:
+      - generic [ref=f1e4]: REVIEW
+      - generic "/var/folders/yd/g0pq_k653t18jfmp5l_ymk7h0000gn/T/demo-njfOVy/demo.mp4" [ref=f1e5]: demo.mp4
+      - generic [ref=f1e6]: 00:00.0 / 00:00.0
+    - main [ref=f1e7]:
+      - generic [ref=f1e8]: Loading frames...
+      - generic [ref=f1e10]:
+        - button "Play" [disabled] [ref=f1e11]
+        - button "Draw redaction box" [disabled] [ref=f1e12]
+        - generic [ref=f1e13]: Drag the amber handles to trim (or focus one and use the arrow keys). Draw or type boxes over anything secret.
+      - group "Timeline" [ref=f1e14] [cursor=pointer]:
+        - slider "Playhead" [disabled] [ref=f1e16]
+        - slider "Trim start" [disabled] [ref=f1e17]
+        - slider "Trim end" [disabled] [ref=f1e18]
+      - generic [ref=f1e19]:
+        - generic [ref=f1e20]: IN 0.0s
+        - generic [ref=f1e21]: OUT 0.0s
+      - list "Markers"
+      - list "Redaction boxes"
+      - group "ADD BOX (video px)" [ref=f1e23]:
+        - generic [ref=f1e25]:
+          - text: X
+          - spinbutton "X" [disabled] [ref=f1e26]
+        - generic [ref=f1e27]:
+          - text: "Y"
+          - spinbutton "Y" [disabled] [ref=f1e28]
+        - generic [ref=f1e29]:
+          - text: W
+          - spinbutton "W" [disabled] [ref=f1e30]
+        - generic [ref=f1e31]:
+          - text: H
+          - spinbutton "H" [disabled] [ref=f1e32]
+        - generic [ref=f1e33]:
+          - generic [ref=f1e34]:
+            - text: FROM s
+            - spinbutton "FROM s" [disabled] [ref=f1e35]
+          - button "Set window start to the playhead" [disabled] [ref=f1e36]: Playhead
+          - generic [ref=f1e37]:
+            - text: TO s
+            - spinbutton "TO s" [disabled] [ref=f1e38]
+          - button "Set window end to the playhead" [disabled] [ref=f1e39]: Playhead
+        - button "Add box" [disabled] [ref=f1e40]
+      - generic [ref=f1e41]:
+        - button "Export trimmed + redacted copy" [disabled] [ref=f1e42]
+        - status

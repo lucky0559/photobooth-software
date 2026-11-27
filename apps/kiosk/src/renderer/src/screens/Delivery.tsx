@@ -59,12 +59,12 @@ export function Delivery({
         <Sparkle size="9vmin" fill="var(--lime)" wobble />
       </div>
       <BannerTitle tone="ink" tilt={-2}>
-        Scan to download your photo
+        {import.meta.env.VITE_WEB === '1' ? 'Trial demo QR' : 'Scan to download your photo'}
       </BannerTitle>
       <div className="delivery__body">
         <FramedCard polaroid className="qr-card">
           {qr ? (
-            <img className="qr-img" src={qr} alt="QR code to download your photo" />
+            <img className="qr-img" src={qr} alt={import.meta.env.VITE_WEB === '1' ? 'Trial demo QR code' : 'QR code to download your photo'} />
           ) : (
             <div className="qr-slot">
               {qrFailed && <p className="qr-slot__error">QR unavailable — please call staff</p>}
@@ -72,6 +72,7 @@ export function Delivery({
           )}
         </FramedCard>
         <div className="delivery__side">
+          {import.meta.env.VITE_WEB === '1' && <p role="status">This QR is for the trial demo. It does not download a guest photo.</p>}
           {state.printHeld && (
             <p className="delivery__print-held" role="status">
               Your print comes out when the next guest finishes, or in about 10 minutes. Ask the owner for your print.
@@ -79,7 +80,9 @@ export function Delivery({
           )}
           {state.printError !== null && (
             <p className="delivery__print-error" role="alert">
-              Printing failed. Please call staff — your photo is still available through the QR code.
+              {import.meta.env.VITE_WEB === '1'
+                ? 'The iPad print sheet could not open. Ask staff to check the setup; the demo QR does not contain a photo.'
+                : 'Printing failed. Please call staff — your photo is still available through the QR code.'}
             </p>
           )}
           <ActionButton onClick={() => dispatch({ type: 'DONE' })}>Done</ActionButton>

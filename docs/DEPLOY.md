@@ -299,8 +299,10 @@ For a demo or trial copy that needs no Supabase or PayMongo, see E.9 (Trial buil
      example a guest walked away mid-capture) keeps the strip held until it returns to the start screen. At most one
      strip is held at a time. The waiting guest sees a message saying so, and each guest's saved photo is only their
      own strip (in the real kiosk the download QR would fetch it). The print copies setting does not apply.
-   - The template footer reads "TRIAL", and the download QR encodes the text `Trial build: the real kiosk shows your
-     photo download link here.` instead of a link.
+   - The active strip template is the bundled project `Sample strip` PNG from the initial Electron build. Windows
+     and iPad trials use the same artwork; paired printing places two strips side by side on one 4x6 sheet. No `TRIAL`
+     label is printed on photos. The download QR still encodes `Trial build: the real kiosk shows your photo download
+     link here.` instead of a link.
    - The real camera and printer are used.
    - **3-day limit.** The first launch starts a 72-hour clock, stored in `trial.json` in the data folder. When it runs
      out (checked at launch and every minute while the kiosk is open) the window switches to a static page: "Trial

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { KioskApi } from './api/kiosk-api';
+import type { WebPrintUi } from './web-print';
 import { composePairSheet } from './compose/compose';
 import { DEFAULT_PAIR_TIMING, flushDueHeldStrip, heldStripTimerActive, type PairTiming } from './output/held-strip-timer';
 import { Attract } from './screens/Attract';
@@ -26,11 +27,13 @@ export function App({
   auth,
   configWarnings = [],
   pairTiming = DEFAULT_PAIR_TIMING,
+  webPrint = null,
 }: {
   api: KioskApi;
   auth: SetupAuth | null;
   configWarnings?: string[];
   pairTiming?: PairTiming;
+  webPrint?: WebPrintUi | null;
 }) {
   const [screen, setScreen] = useState<Screen>('loading');
   const [cameraId, setCameraId] = useState<string | null>(null);
@@ -115,6 +118,7 @@ export function App({
           onSecretTap={onSecretTap}
           onEnqueued={kickQueue}
           pairTiming={pairTiming}
+          webPrint={webPrint}
         />
       )}
     </>
@@ -129,6 +133,7 @@ function KioskFlow({
   onSecretTap,
   onEnqueued,
   pairTiming,
+  webPrint,
 }: {
   api: KioskApi;
   cameraId: string | null;
@@ -136,6 +141,7 @@ function KioskFlow({
   onSecretTap: () => void;
   onEnqueued: () => void;
   pairTiming: PairTiming;
+  webPrint: WebPrintUi | null;
 }) {
   const { state, settings, dispatch, template, online, ready, downloadToken, sessionCreatedAt } = useKiosk(api);
 
@@ -202,6 +208,7 @@ function KioskFlow({
           createdAt={sessionCreatedAt}
           dispatch={dispatch}
           onEnqueued={onEnqueued}
+          webPrint={webPrint}
         />
       );
     case 'delivery':

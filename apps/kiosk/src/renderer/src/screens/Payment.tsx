@@ -97,7 +97,7 @@ export function Payment({
           {payment && <p className="payment__amount">{formatPeso(payment.amountCentavos)}</p>}
         </FramedCard>
         <div className="payment__side">
-          {payment && <p className="payment__scan">Scan with GCash, Maya, or your bank app</p>}
+          {payment && <p className="payment__scan">{import.meta.env.VITE_WEB === '1' ? 'Trial demo only. No payment is taken; this screen continues automatically.' : 'Scan with GCash, Maya, or your bank app'}</p>}
           {view === 'checking' && (
             <p className="payment__checking" role="status">
               Checking your payment…

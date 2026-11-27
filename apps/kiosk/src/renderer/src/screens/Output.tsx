@@ -5,6 +5,7 @@ import { buildSessionSheet, buildSessionStrip } from '../compose/session-sheet';
 import { recordSheet } from '../debug/last-sheet';
 import { runOutput, type PairedOutcome } from '../output/run-output';
 import type { KioskInput } from '../state/useKiosk';
+import type { WebPrintSnapshot, WebPrintUi } from '../web-print';
 import { ActionButton } from '../theme/components/ActionButton';
 import { Backdrop } from '../theme/components/Backdrop';
 import { BannerTitle } from '../theme/components/BannerTitle';
@@ -31,6 +32,7 @@ export function Output({
   createdAt,
   dispatch,
   onEnqueued,
+  webPrint = null,
 }: {
   state: OutputState;
   template: Template | null;
@@ -39,8 +41,10 @@ export function Output({
   createdAt: string | null;
   dispatch: (e: KioskInput) => void;
   onEnqueued: () => void;
+  webPrint?: WebPrintUi | null;
 }) {
   const [failed, setFailed] = useState(false);
+  const [printSnapshot, setPrintSnapshot] = useState<WebPrintSnapshot>({ status: 'idle', message: null });
   const running = useRef(false);
   /** Print outcome per session, so Try again never prints a second sheet. */
   const printed = useRef<{ sessionId: string; printError: string | null } | null>(null);
@@ -100,6 +104,11 @@ export function Output({
     })();
   }, [state, template, settings.copiesPerSession, settings.pairedPrint, downloadToken, createdAt, dispatch, onEnqueued]);
 
+  useEffect(() => {
+    if (!webPrint) return;
+    return webPrint.subscribe(setPrintSnapshot);
+  }, [webPrint]);
+
   // Runs once on entry (the ref also guards StrictMode's double effect); Try again re-runs it.
   useEffect(run, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -121,8 +130,17 @@ export function Output({
       <div className="stage__center">
         <ShutterIris size="34vmin" className="decor--spin" />
         <BannerTitle tone="lime" tilt={2}>
-          Printing your photo…
+          {webPrint?.snapshot().status === 'ready' ? 'Your print sheet is ready' :
+            webPrint?.snapshot().status === 'printing' ? 'AirPrint is open' :
+              webPrint?.snapshot().status === 'preparing' ? 'Preparing your 4×6 sheet…' : 'Printing your photo…'}
         </BannerTitle>
+        {webPrint && printSnapshot.message && <p role="status">{printSnapshot.message}</p>}
+        {webPrint && printSnapshot.status === 'ready' && (
+          <ActionButton onClick={() => webPrint.printNow()}>Open AirPrint print sheet</ActionButton>
+        )}
+        {webPrint && printSnapshot.status === 'printing' && (
+          <p className="staff-detail">When the sheet closes, Safari cannot confirm whether the printer produced the photo.</p>
+        )}
       </div>
     </main>
   );

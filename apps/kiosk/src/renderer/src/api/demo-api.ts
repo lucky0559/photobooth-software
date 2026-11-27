@@ -6,8 +6,8 @@ export const DEMO_PAY_AFTER_MS = 5000;
 export const DEMO_ACTIVE_TEMPLATE_ID = 'demo-strip';
 
 export const DEMO_TEMPLATES: Record<string, Template> = {
-  'demo-strip': { id: 'demo-strip', name: 'Demo strip', layout: 'strip_2x6', overlayPath: 'demo-strip.png' },
-  'demo-4r': { id: 'demo-4r', name: 'Demo 4R', layout: 'print_4r', overlayPath: 'demo-4r.png' },
+  'demo-strip': { id: 'demo-strip', name: 'Sample strip', layout: 'strip_2x6', overlayPath: 'sample-strip.png' },
+  'demo-4r': { id: 'demo-4r', name: 'Sample 4R', layout: 'print_4r', overlayPath: 'sample-4r.png' },
 };
 
 // Built per call, not at module level, so the bundler can drop the whole demo backend from the real build.
@@ -27,10 +27,11 @@ export class DemoKioskApi implements KioskApi {
   constructor(
     private readonly now: () => number = Date.now,
     private readonly overlay: (layout: LayoutId) => Promise<ArrayBuffer> = renderDemoOverlay,
+    private readonly options: { pairedPrint?: boolean } = {},
   ) {}
 
   async getSettings(): Promise<KioskSettings> {
-    return { ...DEFAULT_SETTINGS, activeTemplateId: DEMO_ACTIVE_TEMPLATE_ID, pairedPrint: true };
+    return { ...DEFAULT_SETTINGS, activeTemplateId: DEMO_ACTIVE_TEMPLATE_ID, pairedPrint: this.options.pairedPrint ?? true };
   }
 
   async getTemplate(id: string): Promise<{ template: Template; overlayPng: ArrayBuffer }> {
@@ -82,6 +83,6 @@ export class DemoKioskApi implements KioskApi {
   async signOut(): Promise<void> {}
 }
 
-export function createDemoKioskApi(): DemoKioskApi {
-  return new DemoKioskApi();
+export function createDemoKioskApi(options: { pairedPrint?: boolean } = {}): DemoKioskApi {
+  return new DemoKioskApi(Date.now, renderDemoOverlay, options);
 }

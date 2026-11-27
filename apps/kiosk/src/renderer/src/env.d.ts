@@ -1,5 +1,6 @@
 /// <reference types="vite/client" />
 import type { KioskBridge } from '../../shared/bridge';
+import type { WebPrintUi } from './web-print';
 
 declare global {
   interface ImportMetaEnv {
@@ -8,10 +9,12 @@ declare global {
     readonly VITE_WEB_BASE_URL?: string;
     readonly VITE_FAKE_API?: string;
     readonly VITE_TRIAL?: string;
+    readonly VITE_WEB?: string;
   }
 
   interface Window {
     kiosk: KioskBridge;
+    kioskPrint?: WebPrintUi;
     /** e2e-only helpers, installed only when `VITE_FAKE_API=1`. */
     /** Set by the preload only when PB_FAKE_PRINT=1. */
     __pbPrintCalls?: () => Promise<number>;

@@ -4,7 +4,7 @@ export interface SetupChoices {
   pin: string;
   /** The PIN main currently holds (null on first run). */
   currentPin: string | null;
-  cameraDeviceId: string;
+  cameraDeviceId: string | null;
   printerName: string | null;
 }
 

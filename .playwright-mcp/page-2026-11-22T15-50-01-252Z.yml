@@ -1,0 +1,10 @@
+- main [ref=f2e29]:
+  - timer "Time left" [ref=f2e31]: 2:59
+  - heading "Payment" [level=1] [ref=f2e32]
+  - generic [ref=f2e33]:
+    - generic [ref=f2e34]:
+      - img "Payment QR code" [ref=f2e36]
+      - paragraph [ref=f2e37]: ₱150.00
+    - generic [ref=f2e38]:
+      - paragraph [ref=f2e39]: Trial demo only. No payment is taken; this screen continues automatically.
+      - button "Cancel" [ref=f2e40] [cursor=pointer]

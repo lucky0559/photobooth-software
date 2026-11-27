@@ -1,0 +1,13 @@
+- main [ref=f2e6]:
+  - heading "Kiosk setup" [level=1] [ref=f2e7]
+  - generic [ref=f2e12]:
+    - generic [ref=f2e13]:
+      - text: Camera
+      - combobox "Camera" [ref=f2e14]:
+        - option "Front camera (default)" [selected]
+        - option "Camera 1"
+    - button "Enable camera" [ref=f2e15]
+    - paragraph [ref=f2e16]: The iPad front camera is used by default. Safari will ask for camera access when the guest starts.
+    - paragraph [ref=f2e17]: Prints open the iPad AirPrint sheet. Choose the Canon SELPHY and 4×6 paper there.
+    - button "Print test page" [ref=f2e18]
+    - button "Done" [ref=f2e19]

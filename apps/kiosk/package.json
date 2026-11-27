@@ -7,6 +7,9 @@
   "main": "./out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",
+    "dev:web": "vite --config vite.web.config.mts",
+    "build:web": "vite build --config vite.web.config.mts && node scripts/check-web-bundle.mjs",
+    "preview:web": "vite preview --config vite.web.config.mts",
     "build": "cross-env VITE_FAKE_API= VITE_TRIAL= electron-vite build && node scripts/check-prod-bundle.mjs",
     "package": "pnpm build && electron-builder --dir",
     "build:win": "pnpm build && electron-builder --win",

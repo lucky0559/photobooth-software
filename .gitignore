@@ -4,6 +4,7 @@ out/
 out-e2e/
 out-trial/
 dist-trial/
+apps/kiosk/dist-web/
 build/
 .next/
 coverage/

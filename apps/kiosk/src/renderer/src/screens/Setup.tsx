@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
+import type { WebPrintSnapshot } from '../web-print';
 import { PIN_PATTERN } from '../../../shared/bridge';
 import { saveSetup } from '../setup/save-setup';
 
@@ -56,6 +57,9 @@ export function Setup({
   const [testResult, setTestResult] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [cameraMessage, setCameraMessage] = useState<string | null>(null);
+  const [printSnapshot, setPrintSnapshot] = useState<WebPrintSnapshot>({ status: 'idle', message: null });
+  const isWeb = import.meta.env.VITE_WEB === '1';
 
   useEffect(() => {
     if (step !== 'devices') return;
@@ -64,16 +68,24 @@ export function Setup({
       if (!live) return;
       setPrinters(list);
       setPrinterName(cfg.printerName && list.includes(cfg.printerName) ? cfg.printerName : '');
-    });
-    void listCameras().then((list) => {
+    }).catch((err: unknown) => setError(err instanceof Error ? err.message : 'Could not load device settings'));
+    const cameraList = isWeb
+      ? navigator.mediaDevices.enumerateDevices().then((devices) => devices.filter((device) => device.kind === 'videoinput'))
+      : listCameras();
+    void cameraList.then((list) => {
       if (!live) return;
       setCameras(list);
-      setCameraId((id) => (list.some((c) => c.deviceId === id) ? id : (list[0]?.deviceId ?? '')));
-    });
+      setCameraId((id) => (list.some((c) => c.deviceId === id) ? id : (isWeb ? '' : (list[0]?.deviceId ?? ''))));
+    }).catch((err: unknown) => setCameraMessage(err instanceof Error ? err.message : 'Camera list is unavailable'));
     return () => {
       live = false;
     };
-  }, [step]);
+  }, [step, isWeb]);
+
+  useEffect(() => {
+    if (!isWeb || step !== 'devices' || !window.kioskPrint) return;
+    return window.kioskPrint.subscribe(setPrintSnapshot);
+  }, [isWeb, step]);
 
   const run = async (fn: () => Promise<void>): Promise<void> => {
     setBusy(true);
@@ -120,16 +132,36 @@ export function Setup({
     });
   };
 
+  const enableCamera = (): void => {
+    setCameraMessage(null);
+    void run(async () => {
+      let stream: MediaStream | null = null;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: true });
+        const list = (await navigator.mediaDevices.enumerateDevices()).filter((device) => device.kind === 'videoinput');
+        setCameras(list);
+        setCameraMessage(list.length > 0 ? 'Camera access is ready. Safari may ask again when a guest starts.' : 'No camera was found on this iPad.');
+      } catch (err) {
+        const name = err instanceof DOMException ? err.name : '';
+        setCameraMessage(name === 'NotAllowedError' || name === 'SecurityError'
+          ? 'Camera access was blocked. Allow it in Safari website settings, then try again.'
+          : 'Could not open the iPad camera. Check the permission and try again.');
+      } finally {
+        for (const track of stream?.getTracks() ?? []) track.stop();
+      }
+    });
+  };
+
   const finish = (e: FormEvent): void => {
     e.preventDefault();
-    if (!cameraId) {
+    if (!isWeb && !cameraId) {
       setError('Pick a camera');
       return;
     }
     void run(async () => {
       await saveSetup(
         window.kiosk,
-        { pin, currentPin: savedPin, cameraDeviceId: cameraId, printerName: printerName || null },
+        { pin, currentPin: savedPin, cameraDeviceId: cameraId || null, printerName: isWeb ? null : printerName || null },
         setSavedPin,
       );
       onDone();
@@ -139,10 +171,14 @@ export function Setup({
   const testPrint = (): void => {
     setTestResult(null);
     void run(async () => {
-      // `printTestPage` prints on the persisted printer, so save the selection first.
-      await window.kiosk.setConfig({ printerName: printerName || null });
+      if (!isWeb) {
+        // Electron prints on the persisted printer, so save the selection first.
+        await window.kiosk.setConfig({ printerName: printerName || null });
+      }
       const res = await window.kiosk.printTestPage();
-      setTestResult(res.ok ? 'Test page sent' : `Test print failed: ${res.reason}`);
+      setTestResult(res.ok
+        ? (isWeb ? 'Print sheet closed. Check the paper; Safari cannot confirm that it printed.' : 'Test page sent')
+        : `Test print failed: ${res.reason}`);
     });
   };
 
@@ -155,7 +191,7 @@ export function Setup({
         </p>
       ))}
       {configWarnings.length > 0 && (
-        <p className="staff-detail">Not set or invalid (download QR disabled): {configWarnings.join(', ')}</p>
+        <p className="staff-detail">{isWeb ? 'Setup note:' : 'Not set or invalid (download QR disabled):'} {configWarnings.join(', ')}</p>
       )}
 
       {step === 'pin' && (
@@ -199,7 +235,7 @@ export function Setup({
           <label>
             Camera
             <select value={cameraId} onChange={(e) => setCameraId(e.target.value)}>
-              {cameras.length === 0 && <option value="">No camera found</option>}
+              {isWeb ? <option value="">Front camera (default)</option> : cameras.length === 0 && <option value="">No camera found</option>}
               {cameras.map((c, i) => (
                 <option key={c.deviceId} value={c.deviceId}>
                   {c.label || `Camera ${i + 1}`}
@@ -207,22 +243,38 @@ export function Setup({
               ))}
             </select>
           </label>
-          <label>
-            Printer
-            <select value={printerName} onChange={(e) => setPrinterName(e.target.value)}>
-              <option value="">{printers.length === 0 ? 'No printers found' : 'System default'}</option>
-              {printers.map((p) => (
-                <option key={p} value={p}>
-                  {p}
-                </option>
-              ))}
-            </select>
-          </label>
+          {isWeb && (
+            <>
+              <button type="button" onClick={enableCamera} disabled={busy}>Enable camera</button>
+              {cameraMessage && <p role="status">{cameraMessage}</p>}
+              <p className="staff-detail">The iPad front camera is used by default. Safari will ask for camera access when the guest starts.</p>
+              <p className="staff-detail">Prints open the iPad AirPrint sheet. Choose the Canon SELPHY and 4×6 paper there.</p>
+            </>
+          )}
+          {!isWeb && (
+            <label>
+              Printer
+              <select value={printerName} onChange={(e) => setPrinterName(e.target.value)}>
+                <option value="">{printers.length === 0 ? 'No printers found' : 'System default'}</option>
+                {printers.map((p) => (
+                  <option key={p} value={p}>{p}</option>
+                ))}
+              </select>
+            </label>
+          )}
           <button type="button" onClick={testPrint} disabled={busy}>
             Print test page
           </button>
+          {isWeb && printSnapshot.status === 'ready' && (
+            <button type="button" onClick={() => window.kioskPrint?.printNow()}>
+              Open AirPrint print sheet
+            </button>
+          )}
+          {isWeb && (printSnapshot.status === 'preparing' || printSnapshot.status === 'printing') && printSnapshot.message && (
+            <p role="status">{printSnapshot.message}</p>
+          )}
           {testResult && <p role="status">{testResult}</p>}
-          <button type="submit" disabled={busy}>
+          <button type="submit" disabled={busy || (!isWeb && !cameraId)}>
             Done
           </button>
           {auth && (

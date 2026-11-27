@@ -1,0 +1,7 @@
+- main [ref=f4e6]:
+  - heading "Kiosk setup" [level=1] [ref=f4e7]
+  - generic [ref=f4e8]:
+    - generic [ref=f4e9]:
+      - text: Admin PIN (4–8 digits)
+      - textbox "Admin PIN (4–8 digits)" [active] [ref=f4e10]
+    - button "Next" [ref=f4e11]

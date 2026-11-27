@@ -1,11 +1,11 @@
 /** Opens the configured camera (or the default one when `deviceId` is null) at up to 1920×1080. */
-export function openCamera(deviceId: string | null): Promise<MediaStream> {
+export function openCamera(deviceId: string | null, preferFrontCamera = false): Promise<MediaStream> {
   return navigator.mediaDevices.getUserMedia({
     audio: false,
     video: {
       width: { ideal: 1920 },
       height: { ideal: 1080 },
-      ...(deviceId ? { deviceId: { exact: deviceId } } : {}),
+      ...(deviceId ? { deviceId: { exact: deviceId } } : preferFrontCamera ? { facingMode: { ideal: 'user' } } : {}),
     },
   });
 }

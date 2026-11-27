@@ -49,7 +49,7 @@ export function Capture({
     const fail = (): void => {
       if (!cancelled) dispatch({ type: 'CAMERA_ERROR' });
     };
-    openCamera(cameraId)
+    openCamera(cameraId, import.meta.env.VITE_WEB === '1')
       .then(async (s) => {
         if (cancelled) return closeCamera(s);
         stream = s;
@@ -130,7 +130,7 @@ export function Capture({
       <main className="stage stage--dark capture-error">
         <Backdrop kind="darkroom" />
         <FramedCard className="message-card">
-          <h1>Camera not available. Please call staff.</h1>
+          <h1>{import.meta.env.VITE_WEB === '1' ? 'Camera not available. Allow camera access in Safari, then try again.' : 'Camera not available. Please call staff.'}</h1>
           <ActionButton onClick={() => dispatch({ type: 'CAMERA_RETRY' })}>Try again</ActionButton>
         </FramedCard>
       </main>
